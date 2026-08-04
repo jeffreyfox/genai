@@ -20,7 +20,7 @@ tokenize-input-owt:
     uv run tokenize_input.py --input-path=data/owt-train.txt --output-path=data/owt-train.bin --vocab-path=vocab_owt.pkl --merges-path=merges_owt.pkl
 
 train-llm-ts:
-   uv run train_llm.py --dataset-name=TinyStoriesV2-GPT4 --vocab-path=vocab_ts.pkl --merges-path=merges_ts.pkl --config-path=configs/train_llm_ts.toml --print-interval=20
+   uv run train_llm.py --dataset-name=TinyStoriesV2-GPT4 --vocab-path=vocab_ts.pkl --merges-path=merges_ts.pkl --config-path=configs/train_llm_ts.toml --print-interval=100 --snapshot_interval=500 --device=mps
 
 train-bpe-mini:
    uv run train_bpe.py --input-path=data/TinyStoriesV2-mini.txt --vocab-size=1000 --num-workers=1 --sequence-freq-output-path=freq.pkl

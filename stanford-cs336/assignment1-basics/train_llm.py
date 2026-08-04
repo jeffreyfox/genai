@@ -85,6 +85,21 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def resolve_device(device_name: str) -> torch.device:
+    device = torch.device(device_name)
+    if device.type == "mps" and not torch.backends.mps.is_available():
+        raise RuntimeError("MPS requested but not available on this machine")
+    if device.type == "cuda":
+        if not torch.cuda.is_available():
+            raise RuntimeError("CUDA requested but not available on this machine")
+        if device.index is not None and device.index >= torch.cuda.device_count():
+            raise RuntimeError(
+                f"CUDA device {device.index} requested but only "
+                f"{torch.cuda.device_count()} device(s) available"
+            )
+    return device
+
+
 def estimate_validation_loss(
     model,
     dataset,
@@ -108,7 +123,7 @@ def estimate_validation_loss(
             )
 
             logits = model(x, token_positions)
-            losses.append(cross_entropy(logits, y).item())
+            losses.append(cross_entropy(logits, y).cpu().item())
 
     model.train()
     return sum(losses) / len(losses)
@@ -131,12 +146,13 @@ def main() -> None:
     
     print_interval = args.print_interval
     checkpoint_interval = args.checkpoint_interval
-    device = args.device
+    device = resolve_device(args.device)
 
     print(
         f"Run tag: {run_tag}\n"
         f"Training data file path: {train_data_path}\n"
         f"Validation data file path: {valid_data_path}\n"
+        f"Device: {device}\n"
         f"Print interval: {print_interval}\n"
         f"Checkpoint interval: {checkpoint_interval}\n"
     )
@@ -147,7 +163,7 @@ def main() -> None:
     )
 
     model_config, training_config = load_config(config_path)
-    model = TransformerLM(**asdict(model_config))
+    model = TransformerLM(**asdict(model_config), device=device)
     print(model_config)
 
     train_dataset = np.memmap(
@@ -169,6 +185,7 @@ def main() -> None:
     optimizer = AdamW(model.parameters(), lr=training_config.learning_rate)
 
     start_time = time.time()
+    train_start_time = time.time()
 
     for step in range(training_config.num_steps):
         x, y = get_batch(
@@ -185,7 +202,7 @@ def main() -> None:
         train_loss.backward()
         optimizer.step()
 
-        print(f"Step {step + 1}")
+        # print(f"Step {step + 1}")
 
         if (step + 1) % checkpoint_interval == 0:
             checkpoint_path = f"checkpoints/{run_tag}_step_{step + 1}.pt"
@@ -232,10 +249,18 @@ def main() -> None:
             )
             start_time = time.time()
 
+    train_end_time = time.time()
+    print(
+        f"Trained for {training_config.num_steps} steps, "
+        f"processed {training_config.num_steps * training_config.batch_size * training_config.context_length} tokens, "
+        f"total training time: {train_end_time - train_start_time:.1f} s",
+    )
+
 # TODO:
-# Run the training in Mac M4
+# Run the training in Mac M4 (cpu + mps)
 # Publish the losses to wab.
 # write a readme file with the steps to generate intermediate files.
+# try renting a B200?
 
 if __name__ == "__main__":
     main()
