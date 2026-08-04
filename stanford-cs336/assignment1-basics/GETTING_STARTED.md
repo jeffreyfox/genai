@@ -35,4 +35,17 @@ so that the model trainer can simply load the encoded token integers instead of 
 uv run tokenize_input.py --input-path=data/TinyStoriesV2-GPT4-train.txt --output-path=data/TinyStoriesV2-GPT4-train.bin --vocab-path=vocab_ts.pkl --merges-path=merges_ts.pkl --num-splits=64 --num-workers=8
 
 Then start training the model
-The training configs are stored in configs/xx.toml
+The training configs are stored in configs/train_llm_ts.toml
+
+ uv run train_llm.py --dataset-name=TinyStoriesV2-GPT4 --vocab-path=vocab_ts.pkl --merges-path=merges_ts.pkl --config-path=configs/train_llm_ts.toml --print-interval=50 --checkpoint-interval=50 --device=mps
+
+Training on mps makes it 1.5x faster.
+
+TODO:
+- connect to wandb
+- try the effect of torch.compile
+- rerun on M4
+- try training owt
+- refactor code for better organization
+- understand difference between encode_part and encode_part_2 and see if we can improve the latter
+- finish the memory/flops estimates in the assignments
