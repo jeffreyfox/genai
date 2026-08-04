@@ -114,9 +114,5 @@ test-all:
     just test-get-batch
     just test-checkpointing
 
-cp-to-git:
-    cp tests/adapters.py ~/Programming-Interview-Questions/stanford-cs336/assignment1-basics/tests
-    cp *.py *.ipynb justfile ~/Programming-Interview-Questions/stanford-cs336/assignment1-basics
-
 ruff-check:
    ruff check .

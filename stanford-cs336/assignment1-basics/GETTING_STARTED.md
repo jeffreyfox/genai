@@ -32,7 +32,12 @@ Vocab and merges saved to vocab_ts.pkl and merges_ts.pkl
 Next is to tokenize the training input into binary token integers. We do this once before training the model
 so that the model trainer can simply load the encoded token integers instead of raw texts.
 
+Also do this for validation dataset.
+
 uv run tokenize_input.py --input-path=data/TinyStoriesV2-GPT4-train.txt --output-path=data/TinyStoriesV2-GPT4-train.bin --vocab-path=vocab_ts.pkl --merges-path=merges_ts.pkl --num-splits=64 --num-workers=8
+
+uv run tokenize_input.py --input-path=data/TinyStoriesV2-GPT4-valid.txt --output-path=data/TinyStoriesV2-GPT4-valid.bin --vocab-path=vocab_ts.pkl --merges-path=merges_ts.pkl --num-splits=1 --num-workers=1
+
 
 Then start training the model
 The training configs are stored in configs/train_llm_ts.toml
