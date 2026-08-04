@@ -170,13 +170,13 @@ def main() -> None:
         merges_path=merges_path,
     )
 
-    # tokenize_input(
-    #     input_path=input_path,
-    #     output_path=output_path,
-    #     tokenizer=tokenizer,
-    #     num_splits=num_splits,
-    #     num_workers=num_workers,
-    # )
+    tokenize_input(
+        input_path=input_path,
+        output_path=output_path,
+        tokenizer=tokenizer,
+        num_splits=num_splits,
+        num_workers=num_workers,
+    )
     
     merge_bin_chunks(
         output_path=Path(f"data/{run_tag}.bin"),

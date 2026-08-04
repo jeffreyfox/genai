@@ -26,7 +26,7 @@ train-bpe-mini:
    uv run train_bpe.py --input-path=data/TinyStoriesV2-mini.txt --vocab-size=1000 --num-workers=1 --sequence-freq-output-path=freq.pkl
 
 train-bpe-ts:
-   uv run train_bpe.py --input-path=data/TinyStoriesV2-GPT4-train.txt --vocab-size=10000 --num-workers=8 --num-splits=32 --sequence-freq-input-path=freq_ts.pkl
+   uv run train_bpe.py --input-path=data/TinyStoriesV2-GPT4-train.txt --vocab-size=10000 --num-workers=8 --num-splits=32  # --sequence-freq-output-path=freq_ts.pkl
    # uv run train_bpe.py --input-path=data/TinyStoriesV2-GPT4-train.txt --vocab-size=1000 --num-workers=8 --num-splits=32 --sequence-freq-input-path=freq_ts.pkl
 
 train-bpe-owt:
