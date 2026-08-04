@@ -51,7 +51,8 @@ tokens/s = 2251.5
 print every 50 steps
 
 For GPU:
-tokens/s ~ 3000
+tokens/s ~  3127.7
+
 TODO:
 - connect to wandb
 - try the effect of torch.compile
