@@ -381,6 +381,8 @@ def get_tokenizer_from_vocab_merges_pickle_path(
     vocab_path: Path,
     merges_path: Path,
 ) -> BPETokenizer:
+    print(f"Creating tokenizer from vocab_path {vocab_path} and merges_path {merges_path}")
+
     with Path(vocab_path).open("rb") as f:
         vocab = pickle.load(f)
 
@@ -388,5 +390,4 @@ def get_tokenizer_from_vocab_merges_pickle_path(
         merges = pickle.load(f)
 
     special_tokens = ["<|endoftext|>"]
-    print(f"vocab_size: {len(vocab)}")
     return BPETokenizer(vocab, merges, special_tokens) 

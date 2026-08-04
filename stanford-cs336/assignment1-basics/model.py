@@ -215,10 +215,10 @@ class TransformerBlock(nn.Module):
         device: torch.device | None = None,
     ):
         super().__init__()
-        self.ln1 = RMSNorm(d_model=d_model, device=device)
-        self.ln2 = RMSNorm(d_model=d_model, device=device)
-        self.attn = MultiHeadSelfAttention(d_model, num_heads, theta, max_seq_len, device=device)
-        self.ffn = SwiGLU(d_model, d_ff, device=device)
+        self.ln1 = RMSNorm(d_model, device=device)
+        self.ln2 = RMSNorm(d_model, device=device)
+        self.attn = MultiHeadSelfAttention(d_model, num_heads, theta, max_seq_len, device)
+        self.ffn = SwiGLU(d_model, d_ff, device)
 
     def forward(self, x: torch.Tensor, token_positions: torch.Tensor | None = None) -> torch.Tensor:
         x = x + self.attn(self.ln1(x), token_positions)
@@ -237,13 +237,13 @@ class TransformerLM(nn.Module):
         device: torch.device | None = None,
     ):
         super().__init__()
-        self.token_embeddings = Embedding(vocab_size, d_model)
+        self.token_embeddings = Embedding(vocab_size, d_model, device)
         self.layers = nn.ModuleList([
-            TransformerBlock(d_model, num_heads, d_ff, rope_theta, context_length)
+            TransformerBlock(d_model, num_heads, d_ff, rope_theta, context_length, device)
             for _ in range(num_layers)
         ])
-        self.ln_final = RMSNorm(d_model=d_model, device=device)
-        self.lm_head = Linear(d_model, vocab_size)
+        self.ln_final = RMSNorm(d_model, device=device)
+        self.lm_head = Linear(d_model, vocab_size, device)
 
     def forward(self, x: torch.Tensor, token_positions: torch.Tensor | None = None) -> torch.Tensor:
         x = self.token_embeddings(x)
