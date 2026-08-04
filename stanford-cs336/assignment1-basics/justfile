@@ -1,0 +1,113 @@
+generate-text:
+    uv run generate_text.py \
+        --checkpoint-path=checkpoints/TinyStoriesV2-GPT4_step_50.pt \
+        --vocab-path=vocab_ts.pkl \
+        --merges-path=merges_ts.pkl \
+        --config-path=configs/train_llm_ts.toml \
+        --prompt="Once upon a time" \
+        --max-new-tokens=256 \
+        --temperature=0.0
+
+tokenize-input-mini:
+    uv run tokenize_input.py --input-path=data/TinyStoriesV2-mini.txt --output-path=data/TinyStoriesV2-mini.bin \
+      --vocab-path=vocab_ts.pkl --merges-path=merges_ts.pkl --num-splits=1 --num-workers=1
+
+tokenize-input-ts:
+    uv run tokenize_input.py --input-path=data/TinyStoriesV2-GPT4-train.txt --output-path=data/TinyStoriesV2-GPT4-train.bin --vocab-path=vocab_ts.pkl --merges-path=merges_ts.pkl --num-splits=64 --num-workers=8
+    uv run tokenize_input.py --input-path=data/TinyStoriesV2-GPT4-valid.txt --output-path=data/TinyStoriesV2-GPT4-valid.bin --vocab-path=vocab_ts.pkl --merges-path=merges_ts.pkl --num-splits=1 --num-workers=1
+
+tokenize-input-owt:
+    uv run tokenize_input.py --input-path=data/owt-train.txt --output-path=data/owt-train.bin --vocab-path=vocab_owt.pkl --merges-path=merges_owt.pkl
+
+train-llm-ts:
+   uv run train_llm.py --dataset-name=TinyStoriesV2-GPT4 --vocab-path=vocab_ts.pkl --merges-path=merges_ts.pkl --config-path=configs/train_llm_ts.toml --print-interval=20
+
+train-bpe-mini:
+   uv run train_bpe.py --input-path=data/TinyStoriesV2-mini.txt --vocab-size=1000 --num-workers=1 --sequence-freq-output-path=freq.pkl
+
+train-bpe-ts:
+   uv run train_bpe.py --input-path=data/TinyStoriesV2-GPT4-train.txt --vocab-size=10000 --num-workers=8 --num-splits=32 --sequence-freq-input-path=freq_ts.pkl
+   # uv run train_bpe.py --input-path=data/TinyStoriesV2-GPT4-train.txt --vocab-size=1000 --num-workers=8 --num-splits=32 --sequence-freq-input-path=freq_ts.pkl
+
+train-bpe-owt:
+   uv run train_bpe.py --input-path=data/owt_train.txt --vocab-size=32000 --num-workers=8 --num-splits=128 --sequence-freq-input-path=freq_owt.pkl
+   # uv run train_bpe.py --input-path=data/owt_train.txt --vocab-size=270 --num-workers=8 --num-splits=128 --sequence-freq-input-path=freq_owt.pkl
+
+test-train-bpe:
+    uv run pytest tests/test_train_bpe.py
+
+test-tokenizer:
+    uv run pytest tests/test_tokenizer.py
+
+test-bpe-all:
+    just test-train-bpe
+    just test-tokenizer
+
+test-optimizer:
+    uv run pytest -k test_adamw
+
+test-lr-schedule:
+    uv run pytest -k test_get_lr_cosine_schedule
+
+test-gradient-clipping:
+    uv run pytest -k test_gradient_clipping
+
+test-get-batch:
+    uv run pytest -k test_get_batch
+
+test-checkpointing:
+    uv run pytest -k test_checkpointing
+
+# model.py
+test-linear:
+    uv run pytest -k test_linear
+
+test-embedding:
+    uv run pytest -k test_embedding
+
+test-rmsnorm:
+    uv run pytest -k test_rmsnorm
+
+test-swiglu:
+    uv run pytest -k swiglu
+
+test-rope:
+    uv run pytest -k test_rope
+
+test-softmax:
+    uv run pytest -k test_softmax_matches_pytorch
+
+test-attention:
+    uv run pytest -k test_scaled_dot_product_attention
+    uv run pytest -k test_4d_scaled_dot_product_attention
+
+test-mha:
+    uv run pytest -k test_multihead_self_attention
+
+test-tfb:
+    uv run pytest -k test_transformer_block
+
+test-tflm:
+    uv run pytest -k test_transformer_lm
+
+test-cross-entropy:
+    uv run pytest -k test_cross_entropy
+
+test-all:
+    just test-linear
+    just test-embedding
+    just test-rmsnorm
+    just test-swiglu
+    just test-rope
+    just test-softmax
+    just test-attention
+    just test-mha
+    just test-tfb
+    just test-tflm
+
+cp-to-git:
+    cp tests/adapters.py ~/Programming-Interview-Questions/stanford-cs336/assignment1-basics/tests
+    cp *.py *.ipynb justfile ~/Programming-Interview-Questions/stanford-cs336/assignment1-basics
+
+ruff-check:
+   ruff check .
