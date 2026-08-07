@@ -148,11 +148,17 @@ def main() -> None:
     checkpoint_interval = args.checkpoint_interval
     device = resolve_device(args.device)
 
+    model_config, training_config = load_config(config_path)
+
     print(
         f"Run tag: {run_tag}\n"
         f"Training data file path: {train_data_path}\n"
         f"Validation data file path: {valid_data_path}\n"
         f"Device: {device}\n"
+        f"Steps: {training_config.num_steps}\n"
+        f"Batch size: {training_config.batch_size}\n"
+        f"Context length: {training_config.context_length}\n"
+        f"Learning rate: {training_config.learning_rate}\n"
         f"Print interval: {print_interval}\n"
         f"Checkpoint interval: {checkpoint_interval}\n"
     )
@@ -162,7 +168,6 @@ def main() -> None:
         merges_path=merges_path,
     )
 
-    model_config, training_config = load_config(config_path)
     model = TransformerLM(**asdict(model_config), device=device)
     print(model_config)
 

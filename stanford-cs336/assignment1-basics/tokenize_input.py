@@ -93,7 +93,7 @@ def tokenize_to_bin(
     new_output_path = output_path.with_name(
         f"{output_path.stem}_{chunk_id}{output_path.suffix}"
     )
-    print(f"Tokenizing chunk {chunk_id}, {size_in_mb} MB data.")
+    print(f"Tokenizing chunk {chunk_id}, {size_in_mb:.0f} MB data.")
     with (
         input_path.open("rb") as input_file,
         new_output_path.open("wb") as output_file,
@@ -104,7 +104,7 @@ def tokenize_to_bin(
         token_ids = tokenizer.encode(text)
         np.asarray(token_ids, dtype=np.uint16).tofile(output_file)
         end_time = time.time()
-        print(f"tokenized {len(token_ids)} tokens, {size_in_mb} MB data. Took {end_time-start_time:.1f} s")
+        print(f"Finished processing chunk {chunk_id}, tokenized {len(token_ids)} tokens, {size_in_mb:.0f} MB data. Took {end_time-start_time:.1f} s")
 
 def merge_bin_chunks(
     output_path: Path,
