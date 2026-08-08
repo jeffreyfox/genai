@@ -71,20 +71,20 @@ Training on mps makes it 1.5x faster. Then on M4 is 2x faster on M1.
 
 On M1 CPU:
 tokens/s = 2251.5
-print every 50 steps
 
 On M1 GPU:
-tokens/s ~  3127.7
+tokens/s = 3127.7
 
 On M4 GPU:
+```
 Step 5000: training loss = 1.780, validation loss = 1.718, tokens processed = 819200, time elapsed = 104.3 s,  tokens/s = 7851.7
 Trained for 5000 steps, processed 40960000 tokens, total training time: 9367.6 s
+```
 
 TODO:
+- finish the memory/flops estimates in the assignments
 - connect to wandb
 - try the effect of torch.compile
-- rerun on M4
 - try training owt
 - refactor code for better organization
 - understand difference between encode_part and encode_part_2 and see if we can improve the latter
-- finish the memory/flops estimates in the assignments
