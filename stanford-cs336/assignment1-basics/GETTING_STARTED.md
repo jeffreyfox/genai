@@ -1,15 +1,49 @@
-### Generate token sequence frequency files
-First generate the frequency ts pkl files so we don't need to regenerate it.
-```
-uv run train_bpe.py --input-path=data/TinyStoriesV2-GPT4-train.txt --vocab-size=10000 --num-workers=8 --num-splits=32
+# Getting Started: End-to-End Training Pipeline
+
+This guide walks through the full workflow for training a language model on TinyStories — from BPE training through tokenization to LLM training.
+
+```mermaid
+flowchart LR
+    A[Raw text] --> B[train_bpe.py]
+    B --> C[vocab + merges]
+    C --> D[tokenize_input.py]
+    D --> E[.bin token files]
+    E --> F[train_llm.py]
+    F --> G[Checkpoints]
 ```
 
-Optionally pass in the output path to write the sequence frequency file:
+---
+
+## 1. Generate token sequence frequency files
+
+First, generate the frequency `.pkl` files so you don't need to regenerate them on every run.
+
+```sh
+uv run train_bpe.py \
+  --input-path=data/TinyStoriesV2-GPT4-train.txt \
+  --vocab-size=10000 \
+  --num-workers=8 \
+  --num-splits=32
+```
+
+To save the sequence frequency file for reuse, pass an output path:
+
+```sh
 --sequence-freq-output-path=freq_ts.pkl
+```
 
-So next time we can skip the multi-processings stage which is the most time consuming part.
+This lets you skip the multi-processing stage (the most time-consuming part) on subsequent runs.
 
-Benccmarking on M1 CPU:
+### Benchmarks: BPE training
+
+| Hardware | Pre-tokenization | Merging | Total training | Notes |
+|----------|------------------|---------|----------------|-------|
+| M1 CPU | 71 s | 47 s | 118 s | 59,933 seq entries; 9,743 merges |
+| M4 CPU (2024) | — | 28 s | 67 s | Largest chunk: 66.4 MB in 9.9 s |
+
+<details>
+<summary>M1 CPU — full log</summary>
+
 ```
 sequence_freq dict has 59933 entries
 pair_to_seqs dict has 2108 entries
@@ -33,58 +67,89 @@ Number of merges: 9743
 Vocab and merges saved to vocab_ts.pkl and merges_ts.pkl
 ```
 
-Benchmarking on M4 2024 CPU:
-```
-Finished pre-processing chunk 31, start=2158136601, end=2227753162, size=66.4 MB. Took 9.9 s.
-Merging took 28 seconds
-Training took 67 seconds
+</details>
+
+---
+
+## 2. Tokenize input text
+
+Tokenize the training and validation datasets into binary token integer files. The model trainer can then load encoded tokens directly instead of raw text.
+
+**Training set:**
+
+```sh
+uv run tokenize_input.py \
+  --input-path=data/TinyStoriesV2-GPT4-train.txt \
+  --output-path=data/TinyStoriesV2-GPT4-train.bin \
+  --vocab-path=vocab_ts.pkl \
+  --merges-path=merges_ts.pkl \
+  --num-splits=64 \
+  --num-workers=8
 ```
 
-### Tokenize input text
-Next is to tokenize the training input into binary token integers. We do this once before training the model
-so that the model trainer can simply load the encoded token integers instead of raw texts.
+**Validation set:**
 
-Also do this for validation dataset.
-```
-uv run tokenize_input.py --input-path=data/TinyStoriesV2-GPT4-train.txt --output-path=data/TinyStoriesV2-GPT4-train.bin --vocab-path=vocab_ts.pkl --merges-path=merges_ts.pkl --num-splits=64 --num-workers=8
-
-uv run tokenize_input.py --input-path=data/TinyStoriesV2-GPT4-valid.txt --output-path=data/TinyStoriesV2-GPT4-valid.bin --vocab-path=vocab_ts.pkl --merges-path=merges_ts.pkl --num-splits=1 --num-workers=1
-```
-
-Benchmarking on M1 CPU:
-```
-TODO
+```sh
+uv run tokenize_input.py \
+  --input-path=data/TinyStoriesV2-GPT4-valid.txt \
+  --output-path=data/TinyStoriesV2-GPT4-valid.bin \
+  --vocab-path=vocab_ts.pkl \
+  --merges-path=merges_ts.pkl \
+  --num-splits=1 \
+  --num-workers=1
 ```
 
-Benchmarking on M4 CPU:
-```
-tokenized 8457751 tokens, 33 MB data. Took 36.3 s
+### Benchmarks: tokenization
+
+| Hardware | Result |
+|----------|--------|
+| M1 CPU | _TODO_ |
+| M4 CPU | 8,457,751 tokens · 33 MB · 36.3 s |
+
+---
+
+## 3. Train the model
+
+Start training with the config in [`configs/train_llm_ts.toml`](./configs/train_llm_ts.toml):
+
+```sh
+uv run train_llm.py \
+  --dataset-name=TinyStoriesV2-GPT4 \
+  --vocab-path=vocab_ts.pkl \
+  --merges-path=merges_ts.pkl \
+  --config-path=configs/train_llm_ts.toml \
+  --print-interval=100 \
+  --checkpoint-interval=100 \
+  --device=mps
 ```
 
-### Train model
-Then start training the model
-The training configs are stored in configs/train_llm_ts.toml
-```
-uv run train_llm.py --dataset-name=TinyStoriesV2-GPT4 --vocab-path=vocab_ts.pkl --merges-path=merges_ts.pkl --config-path=configs/train_llm_ts.toml --print-interval=100 --checkpoint-interval=100 --device=mps
-```
-Training on mps makes it 1.5x faster. Then on M4 is 2x faster on M1.
+Training on MPS (Apple GPU) is ~1.5× faster than CPU on M1, and ~2× faster on M4.
 
-On M1 CPU:
-tokens/s = 2251.5
+### Benchmarks: training throughput
 
-On M1 GPU:
-tokens/s = 3127.7
+| Device | Tokens/s |
+|--------|----------|
+| M1 CPU | 2,251.5 |
+| M1 GPU (MPS) | 3,127.7 |
+| M4 GPU (MPS) | 7,851.7 |
 
-On M4 GPU:
+<details>
+<summary>M4 GPU — sample run (5,000 steps)</summary>
+
 ```
 Step 5000: training loss = 1.780, validation loss = 1.718, tokens processed = 819200, time elapsed = 104.3 s,  tokens/s = 7851.7
 Trained for 5000 steps, processed 40960000 tokens, total training time: 9367.6 s
 ```
 
-TODO:
-- finish the memory/flops estimates in the assignments
-- connect to wandb
-- try the effect of torch.compile
-- try training owt
-- refactor code for better organization
-- understand difference between encode_part and encode_part_2 and see if we can improve the latter
+</details>
+
+---
+
+## TODO
+
+- [ ] Finish memory/FLOPs estimates in the assignments
+- [ ] Connect to Weights & Biases (wandb)
+- [ ] Try the effect of `torch.compile`
+- [ ] Try training on OpenWebText (OWT)
+- [ ] Refactor code for better organization
+- [ ] Understand the difference between `encode_part` and `encode_part_2` and see if we can improve the latter
