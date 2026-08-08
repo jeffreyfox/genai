@@ -77,8 +77,8 @@ On M1 GPU:
 tokens/s ~  3127.7
 
 On M4 GPU:
-Saved checkpoint to checkpoints/TinyStoriesV2-GPT4_step_100.pt
-Step 500: training loss = 2.431, validation loss = 2.403, tokens processed = 409600, time elapsed = 53.0 s,  tokens/s = 7732.2
+Step 5000: training loss = 1.780, validation loss = 1.718, tokens processed = 819200, time elapsed = 104.3 s,  tokens/s = 7851.7
+Trained for 5000 steps, processed 40960000 tokens, total training time: 9367.6 s
 
 TODO:
 - connect to wandb
