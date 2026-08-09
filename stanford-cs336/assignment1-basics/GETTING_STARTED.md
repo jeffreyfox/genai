@@ -118,8 +118,11 @@ uv run train_llm.py \
   --vocab-path=vocab_ts.pkl \
   --merges-path=merges_ts.pkl \
   --config-path=configs/train_llm_ts.toml \
+  --num-steps=5000 \
+  --wandb-log-interval=50 \
   --print-interval=100 \
-  --checkpoint-interval=100 \
+  --eval-interval=100 \
+  --checkpoint-interval=500 \
   --device=mps
 ```
 
@@ -143,6 +146,20 @@ Trained for 5000 steps, processed 40960000 tokens, total training time: 9367.6 s
 
 </details>
 
+For quick smoke testing, Use
+
+```sh
+uv run train_llm.py \
+  --dataset-name=TinyStoriesV2-GPT4 \
+  --vocab-path=vocab_ts.pkl \
+  --merges-path=merges_ts.pkl \
+  --config-path=configs/train_llm_ts.toml \
+  --num-steps=100 \
+  --wandb-log-interval=1 \
+  --print-interval=10 \
+  --eval-interval=20 \
+  --checkpoint-interval=50 \
+  --device=mps
 ---
 
 ## TODO

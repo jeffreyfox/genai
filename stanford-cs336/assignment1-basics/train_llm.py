@@ -1,5 +1,4 @@
 import argparse
-import pickle
 import time
 import os
 import torch
@@ -8,14 +7,11 @@ from dataclasses import asdict
 import numpy as np
 from data import get_batch
 from optimizer import AdamW
+import wandb
 
-from tokenizer import (
-    BPETokenizer,
-    get_tokenizer_from_vocab_merges_pickle_path,
-)
+from tokenizer import get_tokenizer_from_vocab_merges_pickle_path
 from model import (
     TransformerLM,
-    softmax,
     cross_entropy,
 )
 from config import (
@@ -63,7 +59,23 @@ def parse_args() -> argparse.Namespace:
         type=int,
         required=False,
         default=100,
-        help="Interval to print loss",
+        help="Interval to print training metrics to stdout",
+    )
+
+    parser.add_argument(
+        "--eval-interval",
+        type=int,
+        required=False,
+        default=100,
+        help="Interval to run validation evaluation",
+    )
+
+    parser.add_argument(
+        "--wandb-log-interval",
+        type=int,
+        required=False,
+        default=10,
+        help="Interval to log training metrics to Weights & Biases",
     )
 
     parser.add_argument(
@@ -72,6 +84,22 @@ def parse_args() -> argparse.Namespace:
         required=False,
         default=100,
         help="Interval to checkpoint model snapshots",
+    )
+
+    parser.add_argument(
+        "--eval-batch-size",
+        type=int,
+        required=False,
+        default=None,
+        help="Batch size for validation evaluation (defaults to training batch size)",
+    )
+
+    parser.add_argument(
+        "--num-steps",
+        type=int,
+        required=False,
+        default=None,
+        help="Number of training steps (overrides config value)",
     )
 
     parser.add_argument(
@@ -107,26 +135,25 @@ def estimate_validation_loss(
     context_length,
     token_positions,
     device,
-    num_batches=1,
 ):
     model.eval()
 
-    losses = []
-
     with torch.no_grad():
-        for _ in range(num_batches):
-            x, y = get_batch(
-                dataset,
-                batch_size=batch_size,
-                context_length=context_length,
-                device=device,
-            )
-
-            logits = model(x, token_positions)
-            losses.append(cross_entropy(logits, y).cpu().item())
+        x, y = get_batch(
+            dataset,
+            batch_size=batch_size,
+            context_length=context_length,
+            device=device,
+        )
+        logits = model(x, token_positions)
+        loss = cross_entropy(logits, y).cpu().item()
 
     model.train()
-    return sum(losses) / len(losses)
+    return loss
+
+
+def get_learning_rate(optimizer: AdamW) -> float:
+    return optimizer.param_groups[0]["alpha"]
 
 
 def main() -> None:
@@ -145,22 +172,55 @@ def main() -> None:
     run_tag = dataset_name
     
     print_interval = args.print_interval
+    eval_interval = args.eval_interval
+    wandb_log_interval = args.wandb_log_interval
     checkpoint_interval = args.checkpoint_interval
     device = resolve_device(args.device)
 
     model_config, training_config = load_config(config_path)
-
+    num_steps = (
+        args.num_steps
+        if args.num_steps is not None
+        else training_config.num_steps
+    )
+    eval_batch_size = (
+        args.eval_batch_size
+        if args.eval_batch_size is not None
+        else training_config.batch_size
+    )
     print(
         f"Run tag: {run_tag}\n"
         f"Training data file path: {train_data_path}\n"
         f"Validation data file path: {valid_data_path}\n"
         f"Device: {device}\n"
-        f"Steps: {training_config.num_steps}\n"
+        f"Steps: {num_steps}\n"
         f"Batch size: {training_config.batch_size}\n"
         f"Context length: {training_config.context_length}\n"
         f"Learning rate: {training_config.learning_rate}\n"
         f"Print interval: {print_interval}\n"
+        f"Eval interval: {eval_interval}\n"
+        f"W&B log interval: {wandb_log_interval}\n"
         f"Checkpoint interval: {checkpoint_interval}\n"
+        f"Eval batch size: {eval_batch_size}\n"
+    )
+
+    wandb.init(
+        project="gpt-training",
+        config={
+            "batch_size": training_config.batch_size,
+            "context_length": training_config.context_length,
+            "num_steps": num_steps,
+            "learning_rate": training_config.learning_rate,
+            "device": str(device),
+            "print_interval": print_interval,
+            "eval_interval": eval_interval,
+            "wandb_log_interval": wandb_log_interval,
+            "checkpoint_interval": checkpoint_interval,
+            "eval_batch_size": eval_batch_size,
+            "model_config": asdict(model_config),
+            "training_config": asdict(training_config),
+            "run_tag": run_tag,
+        },
     )
 
     tokenizer = get_tokenizer_from_vocab_merges_pickle_path(
@@ -189,10 +249,11 @@ def main() -> None:
     # TODO: take more optimizer parameters
     optimizer = AdamW(model.parameters(), lr=training_config.learning_rate)
 
-    start_time = time.time()
+    interval_start_time = time.time()
     train_start_time = time.time()
+    last_valid_loss: float | None = None
 
-    for step in range(training_config.num_steps):
+    for step in range(num_steps):
         x, y = get_batch(
             dataset=train_dataset,
             batch_size=training_config.batch_size,
@@ -207,57 +268,68 @@ def main() -> None:
         train_loss.backward()
         optimizer.step()
 
-        # print(f"Step {step + 1}")
+        step_num = step + 1
+        current_lr = get_learning_rate(optimizer)
 
-        if (step + 1) % checkpoint_interval == 0:
-            checkpoint_path = f"checkpoints/{run_tag}_step_{step + 1}.pt"
+        if step_num % checkpoint_interval == 0:
+            checkpoint_path = f"checkpoints/{run_tag}_step_{step_num}.pt"
             os.makedirs("checkpoints", exist_ok=True)
 
             save_checkpoint(
                 model=model,
                 optimizer=optimizer,
-                iteration=step+1,
+                iteration=step_num,
                 out=checkpoint_path,
             )
             print(f"Saved checkpoint to {checkpoint_path}")
 
-        if (step + 1) % print_interval == 0:
-            model.eval()
-            x_val, y_val = get_batch(
-                dataset=valid_dataset,
-                batch_size=training_config.batch_size,
-                context_length=training_config.context_length,
-                device=device,
-            )
-            logits_val = model(x_val, token_positions)
-            valid_loss = estimate_validation_loss(
+        if step_num % eval_interval == 0:
+            last_valid_loss = estimate_validation_loss(
                 model,
                 valid_dataset,
-                training_config.batch_size,
+                eval_batch_size,
                 training_config.context_length,
                 token_positions,
                 device,
             )
 
-            model.train()
-
+        if step_num % print_interval == 0:
             current_time = time.time()
-            elapsed = current_time - start_time
-            tokens_processed = print_interval * training_config.batch_size * training_config.context_length
+            elapsed = current_time - interval_start_time
+            tokens_processed = (
+                print_interval
+                * training_config.batch_size
+                * training_config.context_length
+            )
+            valid_loss_msg = (
+                f"validation loss = {last_valid_loss:.3f}, "
+                if last_valid_loss is not None
+                else ""
+            )
             print(
-                f"Step {step + 1}: "
+                f"Step {step_num}: "
                 f"training loss = {train_loss.item():.3f}, "
-                f"validation loss = {valid_loss:.3f}, "
+                f"{valid_loss_msg}"
+                f"learning rate = {current_lr:.2e}, "
                 f"tokens processed = {tokens_processed}, "
-                f"time elapsed = {elapsed:.1f} s, ",
+                f"time elapsed = {elapsed:.1f} s, "
                 f"tokens/s = {tokens_processed / elapsed:.1f}"
             )
-            start_time = time.time()
+            interval_start_time = time.time()
+
+        log_payload: dict[str, float] = {}
+        if step_num % wandb_log_interval == 0:
+            log_payload["train/loss"] = train_loss.item()
+            log_payload["train/lr"] = current_lr
+        if step_num % eval_interval == 0 and last_valid_loss is not None:
+            log_payload["eval/loss"] = last_valid_loss
+        if log_payload:
+            wandb.log(log_payload, step=step_num)
 
     train_end_time = time.time()
     print(
-        f"Trained for {training_config.num_steps} steps, "
-        f"processed {training_config.num_steps * training_config.batch_size * training_config.context_length} tokens, "
+        f"Trained for {num_steps} steps, "
+        f"processed {num_steps * training_config.batch_size * training_config.context_length} tokens, "
         f"total training time: {train_end_time - train_start_time:.1f} s",
     )
 
