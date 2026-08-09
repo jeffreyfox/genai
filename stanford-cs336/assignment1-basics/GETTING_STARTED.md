@@ -164,8 +164,6 @@ uv run train_llm.py \
 
 ## TODO
 
-- [ ] Finish memory/FLOPs estimates in the assignments
-- [ ] Connect to Weights & Biases (wandb)
 - [ ] Try the effect of `torch.compile`
 - [ ] Try training on OpenWebText (OWT)
 - [ ] Refactor code for better organization
