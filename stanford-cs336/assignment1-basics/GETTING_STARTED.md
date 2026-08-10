@@ -164,6 +164,7 @@ uv run train_llm.py \
 
 ## TODO
 
+- [ ] Try restarting from a check point and see how the accounting works
 - [ ] Try the effect of `torch.compile`
 - [ ] Try training on OpenWebText (OWT)
 - [ ] Refactor code for better organization
