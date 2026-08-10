@@ -275,13 +275,15 @@ def main() -> None:
             checkpoint_path = f"checkpoints/{run_tag}_step_{step_num}.pt"
             os.makedirs("checkpoints", exist_ok=True)
 
-            save_checkpoint(
-                model=model,
-                optimizer=optimizer,
-                iteration=step_num,
-                out=checkpoint_path,
-            )
-            print(f"Saved checkpoint to {checkpoint_path}")
+            try:
+                save_checkpoint(
+                    model=model,
+                    optimizer=optimizer,
+                    iteration=step_num,
+                    out=checkpoint_path,
+                )
+            except Exception as e:
+                print(f"Error saving checkpoint: {checkpoint_path} at {step_num}: {e}")
 
         if step_num % eval_interval == 0:
             last_valid_loss = estimate_validation_loss(

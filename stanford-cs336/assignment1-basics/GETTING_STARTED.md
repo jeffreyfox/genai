@@ -122,7 +122,7 @@ uv run train_llm.py \
   --wandb-log-interval=50 \
   --print-interval=100 \
   --eval-interval=100 \
-  --checkpoint-interval=500 \
+  --checkpoint-interval=1000 \
   --device=mps
 ```
 
