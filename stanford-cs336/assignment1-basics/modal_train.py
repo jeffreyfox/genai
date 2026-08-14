@@ -16,7 +16,7 @@ image = (
             ".venv/**",
             ".git/**",
             "checkpoints/*.pt",
-            "data/*.txt"
+            "data/**",
             "wandb/**",
             "__pycache__/**",
             "cs336_basics/__pycache__/**",
@@ -42,26 +42,6 @@ image = (
 #     print("CUDA version:", torch.version.cuda)
 
 
-# Check that the data is available
-# @app.function(
-#     image=image,
-#     gpu="L40S",
-#     timeout=60,
-#     volumes={"/workspace": volume},
-# )
-# def train():
-#     import os
-
-#     print(os.listdir("/workspace"))
-
-#     for filename in os.listdir("/workspace/data"):
-#         path = os.path.join("/workspace/data", filename)
-#         print(path, os.path.getsize(path) / 1e9, "GB")
-#     for filename in os.listdir("/workspace"):
-#         if filename.endswith(".pkl"):
-#             print(filename)
-
-
 @app.function(
     image=image,
     gpu="L40S",
@@ -81,15 +61,15 @@ def train():
         "python",
         "-u",
         "/root/cs336/train_llm.py",
-        "--dataset-name=TinyStoriesV2-GPT4",
-        "--vocab-path=data/vocab_ts.pkl",
-        "--merges-path=data/merges_ts.pkl",
+        "--dataset-name=owt",
+        "--vocab-path=data/vocab_owt.pkl",
+        "--merges-path=data/merges_owt.pkl",
         "--config-path=/root/cs336/configs/train_llm_ts.toml",
-        "--num-steps=5000",
-        "--wandb-log-interval=50",
-        "--print-interval=100",
-        "--eval-interval=100",
-        "--checkpoint-interval=1000",
+        "--num-steps=100",
+        "--wandb-log-interval=10",
+        "--print-interval=10",
+        "--eval-interval=10",
+        "--checkpoint-interval=100",
         "--device=cuda",
     ],
     cwd="/workspace",

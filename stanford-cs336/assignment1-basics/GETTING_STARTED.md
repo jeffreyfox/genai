@@ -99,8 +99,8 @@ uv run tokenize_input.py \
 
 # OWT
 uv run tokenize_input.py \
-  --input-path=data/owt-train.txt \
-  --output-path=data/owt-train.bin \
+  --input-path=data/owt_train.txt \
+  --output-path=data/owt_train.bin \
   --vocab-path=data/vocab_owt.pkl \
   --merges-path=data/merges_owt.pkl \
   --num-splits=128 \
@@ -119,12 +119,12 @@ uv run tokenize_input.py \
   --num-workers=1
 
 uv run tokenize_input.py \
-  --input-path=data/owt-valid.txt \
-  --output-path=data/owt-valid.bin \
+  --input-path=data/owt_valid.txt \
+  --output-path=data/owt_valid.bin \
   --vocab-path=data/vocab_owt.pkl \
   --merges-path=data/merges_owt.pkl \
-  --num-splits=1 \
-  --num-workers=1
+  --num-splits=8 \
+  --num-workers=8
 ```
 
 

@@ -162,9 +162,15 @@ def main() -> None:
     vocab_path = Path(args.vocab_path)
     merges_path = Path(args.merges_path)
     config_path = Path(args.config_path)
+
     dataset_name = args.dataset_name
-    train_data_path = Path(f"data/{dataset_name}-train.bin")
-    valid_data_path = Path(f"data/{dataset_name}-valid.bin")
+    if "owt" in dataset_name:
+        train_data_path = Path(f"data/{dataset_name}_train.bin")
+        valid_data_path = Path(f"data/{dataset_name}_valid.bin")
+    else:
+        train_data_path = Path(f"data/{dataset_name}-train.bin")
+        valid_data_path = Path(f"data/{dataset_name}-valid.bin")
+
     if not train_data_path.exists():
         raise ValueError(f"Training data file path does not exist: {train_data_path}")
     if not valid_data_path.exists():
