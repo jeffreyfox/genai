@@ -163,13 +163,13 @@ def main() -> None:
     output_path = Path(args.output_path)
     num_splits = args.num_splits
     num_workers = args.num_workers
-    run_tag = input_path.stem
 
     tokenizer = get_tokenizer_from_vocab_merges_pickle_path(
         vocab_path=vocab_path,
         merges_path=merges_path,
     )
 
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     tokenize_input(
         input_path=input_path,
         output_path=output_path,
@@ -179,7 +179,7 @@ def main() -> None:
     )
     
     merge_bin_chunks(
-        output_path=Path(f"data/{run_tag}.bin"),
+        output_path=output_path,
         num_chunks=num_splits,
     )
 

@@ -26,12 +26,19 @@ uv run train_bpe.py \
   --vocab-size=10000 \
   --num-workers=8 \
   --num-splits=32
+
+# For training OWT data
+uv run train_bpe.py \
+  --input-path=data/owt_train.txt \
+  --vocab-size=32000 \
+  --num-workers=8 \
+  --num-splits=128 
 ```
 
 To save the sequence frequency file for reuse, pass an output path:
 
 ```sh
---sequence-freq-output-path=freq_ts.pkl
+--sequence-freq-output-path=data/freq_ts.pkl
 ```
 
 This lets you skip the multi-processing stage (the most time-consuming part) on subsequent runs.
@@ -67,7 +74,7 @@ Merging took 47 seconds
 Training took 118 seconds
 Vocab size: 10000
 Number of merges: 9743
-Vocab and merges saved to vocab_ts.pkl and merges_ts.pkl
+Vocab and merges saved to data/vocab_ts.pkl and data/merges_ts.pkl
 ```
 
 ---
@@ -81,12 +88,22 @@ Tokenize the training and validation datasets into binary token integer files. T
 **Training set:**
 
 ```sh
+# Tiny Stories
 uv run tokenize_input.py \
   --input-path=data/TinyStoriesV2-GPT4-train.txt \
   --output-path=data/TinyStoriesV2-GPT4-train.bin \
-  --vocab-path=vocab_ts.pkl \
-  --merges-path=merges_ts.pkl \
+  --vocab-path=data/vocab_ts.pkl \
+  --merges-path=data/merges_ts.pkl \
   --num-splits=64 \
+  --num-workers=8
+
+# OWT
+uv run tokenize_input.py \
+  --input-path=data/owt-train.txt \
+  --output-path=data/owt-train.bin \
+  --vocab-path=data/vocab_owt.pkl \
+  --merges-path=data/merges_owt.pkl \
+  --num-splits=128 \
   --num-workers=8
 ```
 
@@ -96,8 +113,16 @@ uv run tokenize_input.py \
 uv run tokenize_input.py \
   --input-path=data/TinyStoriesV2-GPT4-valid.txt \
   --output-path=data/TinyStoriesV2-GPT4-valid.bin \
-  --vocab-path=vocab_ts.pkl \
-  --merges-path=merges_ts.pkl \
+  --vocab-path=data/vocab_ts.pkl \
+  --merges-path=data/merges_ts.pkl \
+  --num-splits=1 \
+  --num-workers=1
+
+uv run tokenize_input.py \
+  --input-path=data/owt-valid.txt \
+  --output-path=data/owt-valid.bin \
+  --vocab-path=data/vocab_owt.pkl \
+  --merges-path=data/merges_owt.pkl \
   --num-splits=1 \
   --num-workers=1
 ```
@@ -124,8 +149,8 @@ Start training with the config in `[configs/train_llm_ts.toml](./configs/train_l
 ```sh
 uv run train_llm.py \
   --dataset-name=TinyStoriesV2-GPT4 \
-  --vocab-path=vocab_ts.pkl \
-  --merges-path=merges_ts.pkl \
+  --vocab-path=data/vocab_ts.pkl \
+  --merges-path=data/merges_ts.pkl \
   --config-path=configs/train_llm_ts.toml \
   --num-steps=5000 \
   --wandb-log-interval=50 \
@@ -172,8 +197,8 @@ For quick smoke testing, Use
 ```sh
 uv run train_llm.py \
   --dataset-name=TinyStoriesV2-GPT4 \
-  --vocab-path=vocab_ts.pkl \
-  --merges-path=merges_ts.pkl \
+  --vocab-path=data/vocab_ts.pkl \
+  --merges-path=data/merges_ts.pkl \
   --config-path=configs/train_llm_ts.toml \
   --num-steps=100 \
   --wandb-log-interval=1 \

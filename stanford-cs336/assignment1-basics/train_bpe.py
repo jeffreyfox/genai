@@ -122,9 +122,13 @@ def main() -> None:
         tag = "ts"
     elif "owt" in input_path:
         tag = "owt"
-    save_vocab(vocab, Path(f"vocab_{tag}.pkl"))
-    save_merges(merges, Path(f"merges_{tag}.pkl"))
-    print(f"Vocab and merges saved to vocab_{tag}.pkl and merges_{tag}.pkl")
+    data_dir = Path("data")
+    data_dir.mkdir(parents=True, exist_ok=True)
+    vocab_path = data_dir / f"vocab_{tag}.pkl"
+    merges_path = data_dir / f"merges_{tag}.pkl"
+    save_vocab(vocab, vocab_path)
+    save_merges(merges, merges_path)
+    print(f"Vocab and merges saved to {vocab_path} and {merges_path}")
     
 
 if __name__ == "__main__":
