@@ -12,6 +12,8 @@ flowchart LR
     F --> G[Checkpoints]
 ```
 
+
+
 ---
 
 ## 1. Generate token sequence frequency files
@@ -36,13 +38,14 @@ This lets you skip the multi-processing stage (the most time-consuming part) on 
 
 ### Benchmarks: BPE training
 
-| Hardware | Pre-tokenization | Merging | Total training | Notes |
-|----------|------------------|---------|----------------|-------|
-| M1 CPU | 71 s | 47 s | 118 s | 59,933 seq entries; 9,743 merges |
-| M4 CPU (2024) | — | 28 s | 67 s | Largest chunk: 66.4 MB in 9.9 s |
 
-<details>
-<summary>M1 CPU — full log</summary>
+| Hardware      | Pre-tokenization | Merging | Total training | Notes                            |
+| ------------- | ---------------- | ------- | -------------- | -------------------------------- |
+| M1 CPU        | 71 s             | 47 s    | 118 s          | 59,933 seq entries; 9,743 merges |
+| M4 CPU (2024) | —                | 28 s    | 67 s           | Largest chunk: 66.4 MB in 9.9 s  |
+
+
+M1 CPU — full log
 
 ```
 sequence_freq dict has 59933 entries
@@ -67,9 +70,9 @@ Number of merges: 9743
 Vocab and merges saved to vocab_ts.pkl and merges_ts.pkl
 ```
 
-</details>
-
 ---
+
+
 
 ## 2. Tokenize input text
 
@@ -99,18 +102,24 @@ uv run tokenize_input.py \
   --num-workers=1
 ```
 
+
+
 ### Benchmarks: tokenization
 
-| Hardware | Result |
-|----------|--------|
-| M1 CPU | _TODO_ |
-| M4 CPU | 8,457,751 tokens · 33 MB · 36.3 s |
+
+| Hardware | Result                            |
+| -------- | --------------------------------- |
+| M1 CPU   | *TODO*                            |
+| M4 CPU   | 8,457,751 tokens · 33 MB · 36.3 s |
+
 
 ---
 
+
+
 ## 3. Train the model
 
-Start training with the config in [`configs/train_llm_ts.toml`](./configs/train_llm_ts.toml):
+Start training with the config in `[configs/train_llm_ts.toml](./configs/train_llm_ts.toml)`:
 
 ```sh
 uv run train_llm.py \
@@ -126,25 +135,37 @@ uv run train_llm.py \
   --device=mps
 ```
 
-Training on MPS (Apple GPU) is ~1.5× faster than CPU on M1, and ~2× faster on M4.
+To train on modal, use this
+
+```
+uv run modal run modal_train.py
+```
+
+Training on MPS (Apple GPU) is ~1.5× faster than CPU on M1, and ~2× faster on M4, and another ~15x faster on L40S.
 
 ### Benchmarks: training throughput
 
-| Device | Tokens/s |
-|--------|----------|
-| M1 CPU | 2,251.5 |
-| M1 GPU (MPS) | 3,127.7 |
-| M4 GPU (MPS) | 7,851.7 |
 
-<details>
-<summary>M4 GPU — sample run (5,000 steps)</summary>
+| Device      | Tokens/s |
+| ----------- | -------- |
+| M1 CPU      | 2,251.5  |
+| M1 (MPS)    | 3,127.7  |
+| M4 (MPS)    | 7,851.7  |
+| L40S (CUDA) | 80,768.7 |
+
+
+M4 GPU — sample run (5,000 steps)
 
 ```
 Step 5000: training loss = 1.780, validation loss = 1.718, tokens processed = 819200, time elapsed = 104.3 s,  tokens/s = 7851.7
 Trained for 5000 steps, processed 40960000 tokens, total training time: 9367.6 s
 ```
 
-</details>
+L40S GPU on Modal — sample run (5,000 steps)
+
+```
+Step 5000: training loss = 1.730, validation loss = 1.741, learning rate = 1.00e-03, tokens processed = 819200, time elapsed = 10.1 s, tokens/s = 80768.7 Trained for 5000 steps, processed 40960000 tokens, total training time: 506.8 s
+```
 
 For quick smoke testing, Use
 
@@ -169,3 +190,5 @@ uv run train_llm.py \
 - [ ] Try training on OpenWebText (OWT)
 - [ ] Refactor code for better organization
 - [ ] Understand the difference between `encode_part` and `encode_part_2` and see if we can improve the latter
+```
+
