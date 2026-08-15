@@ -252,8 +252,13 @@ def main() -> None:
 
     token_positions = torch.arange(training_config.context_length, device=device)
 
-    # TODO: take more optimizer parameters
-    optimizer = AdamW(model.parameters(), lr=training_config.learning_rate)
+    optimizer = AdamW(
+        model.parameters(),
+        lr=training_config.learning_rate,
+        betas=training_config.betas,
+        eps=training_config.eps,
+        weight_decay=training_config.weight_decay,
+    )
 
     interval_start_time = time.time()
     train_start_time = time.time()

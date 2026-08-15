@@ -21,6 +21,8 @@ class TrainingConfig:
     learning_rate: float
     num_steps: int
     weight_decay: float
+    betas: tuple[float, float]
+    eps: float
 
 
 def load_config(
@@ -29,7 +31,12 @@ def load_config(
     with path.open("rb") as file:
         raw = tomllib.load(file)
 
+    training = raw["training"]
+    betas = training.get("betas")
+    if betas is not None:
+        training["betas"] = tuple(betas)
+
     return (
         ModelConfig(**raw["model"]),
-        TrainingConfig(**raw["training"]),
+        TrainingConfig(**training),
     )
