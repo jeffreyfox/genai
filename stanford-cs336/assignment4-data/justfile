@@ -1,0 +1,8 @@
+run-extract:
+    uv run python ./run_extract.py
+
+show-warc-example:
+    gzip -dc local-shared-data/CC/example.warc.gz | more
+
+show-wet-example:
+    gzip -dc local-shared-data/CC/example.warc.wet.gz | more

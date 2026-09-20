@@ -1,0 +1,7 @@
+data/
+output*
+local-shared-data/
+cs336_data.egg-info/
+LICENSE
+*.md
+*.pdf
