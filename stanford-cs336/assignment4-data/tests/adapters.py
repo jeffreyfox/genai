@@ -2,30 +2,33 @@ from __future__ import annotations
 
 import os
 from typing import Any
-from cs336_data import (
-    extract_utils,
-    lang_utils,
+from cs336_data.common import (
+    extract_text_from_html_bytes,
+    identify_language,
+    mask_emails,
+    mask_phone_numbers,
+    mask_ips,
 )
 
 
 def run_extract_text_from_html_bytes(html_bytes: bytes) -> str | None:
-    return extract_utils.extract_text_from_html_bytes(html_bytes)
+    return extract_text_from_html_bytes(html_bytes)
 
 
 def run_identify_language(text: str) -> tuple[Any, float]:
-    return lang_utils.identify_language(text)
+    return identify_language(text)
 
 
 def run_mask_emails(text: str) -> tuple[str, int]:
-    raise NotImplementedError
+    return mask_emails(text)
 
 
 def run_mask_phone_numbers(text: str) -> tuple[str, int]:
-    raise NotImplementedError
+    return mask_phone_numbers(text)
 
 
 def run_mask_ips(text: str) -> tuple[str, int]:
-    raise NotImplementedError
+    return mask_ips(text)
 
 
 def run_classify_nsfw(text: str) -> tuple[Any, float]:

@@ -1,5 +1,5 @@
 import gzip
-from cs336_data.extract_utils import extract_text_from_html_bytes
+from cs336_data.common import extract_text_from_html_bytes
 from warcio.archiveiterator import ArchiveIterator
 
 

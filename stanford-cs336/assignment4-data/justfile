@@ -1,6 +1,13 @@
 run-extract:
     uv run python ./run_extract.py
 
+run-tests:
+    uv run pytest -k test_extract_text_from_html_bytes
+    uv run pytest -k test_identify_language
+    uv run pytest -k test_mask_emails
+    uv run pytest -k test_mask_phones
+    uv run pytest -k test_mask_ips
+
 show-warc-example:
     gzip -dc local-shared-data/CC/example.warc.gz | more
 
