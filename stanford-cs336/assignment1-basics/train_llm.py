@@ -346,11 +346,6 @@ def main() -> None:
         f"total training time: {train_end_time - train_start_time:.1f} s",
     )
 
-# TODO:
-# Run the training in Mac M4 (cpu + mps)
-# Publish the losses to wab.
-# write a readme file with the steps to generate intermediate files.
-# try renting a B200?
 
 if __name__ == "__main__":
     main()
