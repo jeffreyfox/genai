@@ -1,7 +1,28 @@
+# Time forward (f), backward (b), and optimizer (o) on the local machine.
+# Warm-up steps run first and are excluded from the mean and standard deviation.
+# device is cpu or gpu. gpu uses CUDA when it is available, otherwise MPS.
+# mode is a comma-separated subset of f, b, o. Example: just benchmark gpu 10 5 f
 benchmark device="gpu" num_steps="10" warmup_steps="5" mode="f,b,o":
     uv run python cs336_systems/benchmark.py \
         --config-path=cs336_systems/training_config.toml \
         --device={{device}} \
+        --num-steps={{num_steps}} \
+        --warmup-steps={{warmup_steps}} \
+        --mode={{mode}}
+
+# Time the benchmark on a Modal L40S and print the timeit mean and standard deviation.
+# Example: just benchmark-modal 10 5 f,b,o
+benchmark-modal num_steps="10" warmup_steps="5" mode="f,b,o":
+    uv run modal run modal_benchmark.py::benchmark \
+        --num-steps={{num_steps}} \
+        --warmup-steps={{warmup_steps}} \
+        --mode={{mode}}
+
+# Profile the same benchmark on a Modal L40S with Nsight Systems.
+# The report is written to the cs336-data volume as benchmark.nsys-rep.
+# Example: just profile-modal 10 5 f,b,o
+profile-modal num_steps="10" warmup_steps="5" mode="f,b,o":
+    uv run modal run modal_benchmark.py::main \
         --num-steps={{num_steps}} \
         --warmup-steps={{warmup_steps}} \
         --mode={{mode}}
