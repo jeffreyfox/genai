@@ -1,5 +1,5 @@
 import argparse
-import time
+import timeit
 import os
 import torch
 from pathlib import Path
@@ -24,11 +24,11 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "--print-interval",
+        "--warmup-steps",
         type=int,
         required=False,
-        default=100,
-        help="Interval to print training metrics to stdout",
+        default=5,
+        help="Number of untimed warm-up steps before measurement",
     )
 
     parser.add_argument(
@@ -36,7 +36,15 @@ def parse_args() -> argparse.Namespace:
         type=int,
         required=False,
         default=None,
-        help="Number of training steps (overrides config value)",
+        help="Number of timed steps (overrides config value)",
+    )
+
+    parser.add_argument(
+        "--mode",
+        type=str,
+        required=False,
+        default="f,b,o",
+        help="Comma-separated phases to time: f/forward, b/backward, o/optimizer. Every step still runs all three.",
     )
 
     parser.add_argument(
@@ -62,6 +70,12 @@ def resolve_device(device_name: str) -> torch.device:
         raise RuntimeError("GPU requested but neither CUDA nor MPS is available")
     raise ValueError(f"Device must be 'cpu' or 'gpu', got {device_name!r}")
 
+def synchronize(device: torch.device) -> None:
+    if device.type == "cuda":
+        torch.cuda.synchronize()
+    elif device.type == "mps":
+        torch.mps.synchronize()
+
 def get_learning_rate(optimizer: AdamW) -> float:
     return optimizer.param_groups[0]["alpha"]
 
@@ -72,13 +86,65 @@ def get_random_batch(
     y = torch.randint(0, vocab_size, (batch_size, context_length), device=device)
     return x, y
 
+PHASES = ("forward", "backward", "optimizer")
+PHASE_ALIASES = {
+    "f": "forward",
+    "forward": "forward",
+    "b": "backward",
+    "backward": "backward",
+    "o": "optimizer",
+    "optimizer": "optimizer",
+}
+
+def parse_modes(mode: str) -> set[str]:
+    parts = [part.strip() for part in mode.replace(",", " ").split() if part.strip()]
+    unknown = [part for part in parts if part not in PHASE_ALIASES]
+    if not parts or unknown:
+        raise ValueError(
+            f"Mode must list one or more of f, b, o, got {mode!r}"
+        )
+    return {PHASE_ALIASES[part] for part in parts}
+
+def run_step(
+    model: BasicsTransformerLM,
+    x: torch.Tensor,
+    y: torch.Tensor,
+    optimizer: AdamW,
+    device: torch.device,
+    timed: set[str],
+) -> dict[str, float]:
+    durations = {phase: 0.0 for phase in timed}
+
+    def run(phase: str, fn) -> None:
+        if phase not in timed:
+            fn()
+            synchronize(device)
+            return
+        synchronize(device)
+        start = timeit.default_timer()
+        fn()
+        synchronize(device)
+        durations[phase] += timeit.default_timer() - start
+
+    def forward() -> None:
+        nonlocal loss
+        loss = F.cross_entropy(model(x).transpose(1, 2), y)
+
+    loss = None
+    run("forward", forward)
+    model.zero_grad(set_to_none=True)
+    run("backward", loss.backward)
+    run("optimizer", optimizer.step)
+    return durations
+
 def main() -> None:
     args = parse_args()
     
     config_path = Path(args.config_path)
 
-    print_interval = args.print_interval
     device = resolve_device(args.device)
+    timed = parse_modes(args.mode)
+    warmup_steps = args.warmup_steps
 
     model_config, training_config = load_config(config_path)
     num_steps = (
@@ -89,12 +155,13 @@ def main() -> None:
 
     print(
         f"Device: {device}\n"
-        f"Steps: {num_steps}\n"
+        f"Timed phases: {', '.join(phase for phase in PHASES if phase in timed)}\n"
+        f"Warm-up steps: {warmup_steps}\n"
+        f"Timed steps: {num_steps}\n"
         f"Vocab size: {model_config.vocab_size}\n"
         f"Batch size: {training_config.batch_size}\n"
         f"Context length: {training_config.context_length}\n"
         f"Learning rate: {training_config.learning_rate}\n"
-        f"Print interval: {print_interval}\n"
     )
 
     model = BasicsTransformerLM(**asdict(model_config)).to(device)
@@ -108,36 +175,34 @@ def main() -> None:
         weight_decay=training_config.weight_decay,
     )
 
-    train_start_time = time.time()
-
-    for step in range(num_steps):
-        x, y = get_random_batch(
-            vocab_size=model_config.vocab_size,
-            batch_size=training_config.batch_size,
-            context_length=training_config.context_length,
-            device=device,
-        )
-
-        logits = model(x)
-        train_loss = F.cross_entropy(logits.transpose(1, 2), y)
-
-        optimizer.zero_grad(set_to_none=True)
-        train_loss.backward()
-        optimizer.step()
-
-        step_num = step + 1
-
-        if step_num % print_interval == 0:
-            print(
-                f"Step {step_num}: "
-                f"training loss = {train_loss.item():.3f}"
-            )
-            
-    train_end_time = time.time()
-    print(
-        f"Trained for {num_steps} steps, "
-        f"total training time: {train_end_time - train_start_time:.1f} s",
+    x, y = get_random_batch(
+        vocab_size=model_config.vocab_size,
+        batch_size=training_config.batch_size,
+        context_length=training_config.context_length,
+        device=device,
     )
+
+    print(f"Running {warmup_steps} warmup steps ...")
+    for _ in range(warmup_steps):
+        run_step(model, x, y, optimizer, device, timed=set())
+
+    print(f"Running {num_steps} timed steps ...")
+    samples = {phase: [] for phase in PHASES if phase in timed}
+    for _ in range(num_steps):
+        durations = run_step(model, x, y, optimizer, device, timed)
+        for phase, duration in durations.items():
+            samples[phase].append(duration)
+
+    for phase in PHASES:
+        if phase not in samples:
+            continue
+        times = np.array(samples[phase])
+        mean_ms = times.mean() * 1000
+        std_ms = times.std(ddof=1) * 1000 if num_steps > 1 else 0.0
+        print(
+            f"{phase}: {num_steps} steps, "
+            f"{mean_ms:.1f} ± {std_ms:.1f} ms/step"
+        )
 
 
 if __name__ == "__main__":

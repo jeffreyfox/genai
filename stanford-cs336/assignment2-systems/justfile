@@ -1,6 +1,7 @@
-benchmark device="gpu" num_steps="10":
+benchmark device="gpu" num_steps="10" warmup_steps="5" mode="f,b,o":
     uv run python cs336_systems/benchmark.py \
         --config-path=cs336_systems/training_config.toml \
         --device={{device}} \
         --num-steps={{num_steps}} \
-        --print-interval=1
+        --warmup-steps={{warmup_steps}} \
+        --mode={{mode}}
