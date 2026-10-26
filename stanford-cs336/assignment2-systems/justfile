@@ -4,19 +4,27 @@
 # mode is a comma-separated subset of f, b, o. Example: just benchmark gpu 10 5 f
 benchmark device="gpu" num_steps="10" warmup_steps="5" mode="f,b,o":
     uv run python cs336_systems/benchmark.py \
-        --config-path=cs336_systems/training_config.toml \
+        --config-path=small.toml \
         --device={{device}} \
         --num-steps={{num_steps}} \
         --warmup-steps={{warmup_steps}} \
         --mode={{mode}}
 
 # Time the benchmark on a Modal L40S and print the timeit mean and standard deviation.
-# Example: just benchmark-modal 10 5 f,b,o
-benchmark-modal num_steps="10" warmup_steps="5" mode="f,b,o":
+# config_path is a filename in cs336_systems. The snapshot is <config>-<stages>.pickle
+# on the cs336-data volume, for example small-fbo.pickle.
+# Example: just benchmark-modal 10 5 f,b,o small.toml
+benchmark-modal num_steps="10" warmup_steps="5" mode="f,b,o" config_path="small.toml":
     uv run modal run modal_benchmark.py::benchmark \
         --num-steps={{num_steps}} \
         --warmup-steps={{warmup_steps}} \
-        --mode={{mode}}
+        --mode={{mode}} \
+        --config-path={{config_path}}
+
+# Download the snapshot for a config and mode from the cs336-data volume.
+# Example: just download-snapshot small.toml f,b,o
+download-snapshot config_path="small.toml" mode="f,b,o":
+    uv run modal volume get --force cs336-data {{file_stem(config_path)}}-{{replace(replace(mode, ",", ""), " ", "")}}.pickle .
 
 # Profile the same benchmark on a Modal L40S with Nsight Systems.
 # The report is written to the cs336-data volume as benchmark.nsys-rep.

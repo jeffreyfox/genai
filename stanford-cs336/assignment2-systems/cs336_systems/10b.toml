@@ -1,0 +1,18 @@
+[model]
+vocab_size = 10000
+context_length = 512
+d_model = 4608
+num_layers = 50
+num_heads = 36
+d_ff = 12288 # roughly 8/3 d_model and a multuple of 64.
+rope_theta = 10000.0
+
+[training]
+batch_size = 4
+context_length = 512
+learning_rate = 1e-3
+betas = [0.9, 0.999]
+eps = 1e-8
+weight_decay = 0.1
+num_steps = 5000
+

@@ -11,6 +11,14 @@ from cs336_basics.optimizer import AdamW
 from cs336_basics.model import BasicsTransformerLM
 from cs336_basics.config import load_config
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+
+def resolve_script_path(path: str) -> Path:
+    candidate = Path(path)
+    if candidate.is_absolute():
+        return candidate
+    return SCRIPT_DIR / candidate
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Benchmarking."
@@ -20,7 +28,7 @@ def parse_args() -> argparse.Namespace:
         "--config-path",
         type=str,
         required=True,
-        help="Path of the config file",
+        help="Config file. A relative path is resolved inside cs336_systems.",
     )
 
     parser.add_argument(
@@ -44,7 +52,7 @@ def parse_args() -> argparse.Namespace:
         type=str,
         required=False,
         default="f,b,o",
-        help="Comma-separated phases to time: f/forward, b/backward, o/optimizer. Every step still runs all three.",
+        help="Comma-separated phases to run and time: f/forward, b/backward, o/optimizer. Backward requires forward.",
     )
 
     parser.add_argument(
@@ -56,8 +64,20 @@ def parse_args() -> argparse.Namespace:
         help="Device to run on. gpu uses CUDA when available, otherwise MPS.",
     )
 
+    parser.add_argument(
+        "--memory-snapshot-dir",
+        type=str,
+        required=False,
+        default=None,
+        help="Directory for the CUDA memory snapshot. A relative path is inside cs336_systems. The filename is <config>-<stages>.pickle.",
+    )
+
     return parser.parse_args()
 
+
+def snapshot_filename(config_path: Path, mode: str) -> str:
+    stages = mode.replace(",", "").replace(" ", "")
+    return f"{config_path.stem}-{stages}.pickle"
 
 def resolve_device(device_name: str) -> torch.device:
     if device_name == "cpu":
@@ -103,7 +123,10 @@ def parse_modes(mode: str) -> set[str]:
         raise ValueError(
             f"Mode must list one or more of f, b, o, got {mode!r}"
         )
-    return {PHASE_ALIASES[part] for part in parts}
+    phases = {PHASE_ALIASES[part] for part in parts}
+    if "backward" in phases and "forward" not in phases:
+        raise ValueError(f"backward requires forward in the same step, got {mode!r}")
+    return phases
 
 def run_step(
     model: BasicsTransformerLM,
@@ -111,12 +134,14 @@ def run_step(
     y: torch.Tensor,
     optimizer: AdamW,
     device: torch.device,
-    timed: set[str],
+    phases: set[str],
+    *,
+    time_it: bool,
 ) -> dict[str, float]:
-    durations = {phase: 0.0 for phase in timed}
+    durations = {phase: 0.0 for phase in phases}
 
     def run(phase: str, fn) -> None:
-        if phase not in timed:
+        if not time_it:
             fn()
             synchronize(device)
             return
@@ -126,21 +151,27 @@ def run_step(
         synchronize(device)
         durations[phase] += timeit.default_timer() - start
 
-    def forward() -> None:
-        nonlocal loss
-        loss = F.cross_entropy(model(x).transpose(1, 2), y)
+    if "forward" in phases:
+        def forward() -> None:
+            nonlocal loss
+            loss = F.cross_entropy(model(x).transpose(1, 2), y)
 
-    loss = None
-    run("forward", forward)
-    model.zero_grad(set_to_none=True)
-    run("backward", loss.backward)
-    run("optimizer", optimizer.step)
+        loss = None
+        run("forward", forward)
+
+    if "backward" in phases:
+        model.zero_grad(set_to_none=True)
+        run("backward", loss.backward)
+
+    if "optimizer" in phases:
+        run("optimizer", optimizer.step)
+
     return durations
 
 def main() -> None:
     args = parse_args()
     
-    config_path = Path(args.config_path)
+    config_path = resolve_script_path(args.config_path)
 
     device = resolve_device(args.device)
     timed = parse_modes(args.mode)
@@ -155,7 +186,7 @@ def main() -> None:
 
     print(
         f"Device: {device}\n"
-        f"Timed phases: {', '.join(phase for phase in PHASES if phase in timed)}\n"
+        f"Phases: {', '.join(phase for phase in PHASES if phase in timed)}\n"
         f"Warm-up steps: {warmup_steps}\n"
         f"Timed steps: {num_steps}\n"
         f"Vocab size: {model_config.vocab_size}\n"
@@ -184,14 +215,29 @@ def main() -> None:
 
     print(f"Running {warmup_steps} warmup steps ...")
     for _ in range(warmup_steps):
-        run_step(model, x, y, optimizer, device, timed=set())
+        run_step(model, x, y, optimizer, device, timed, time_it=False)
+
+    if device.type == "cuda":
+        torch.cuda.memory._record_memory_history(max_entries=1000000)
 
     print(f"Running {num_steps} timed steps ...")
     samples = {phase: [] for phase in PHASES if phase in timed}
     for _ in range(num_steps):
-        durations = run_step(model, x, y, optimizer, device, timed)
+        durations = run_step(model, x, y, optimizer, device, timed, time_it=True)
         for phase, duration in durations.items():
             samples[phase].append(duration)
+
+    if device.type == "cuda":
+        snapshot_dir = (
+            SCRIPT_DIR
+            if args.memory_snapshot_dir is None
+            else resolve_script_path(args.memory_snapshot_dir)
+        )
+        snapshot_path = snapshot_dir / snapshot_filename(config_path, args.mode)
+        snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+        torch.cuda.memory._dump_snapshot(str(snapshot_path))
+        torch.cuda.memory._record_memory_history(enabled=None)
+        print(f"Wrote CUDA memory snapshot to {snapshot_path}")
 
     for phase in PHASES:
         if phase not in samples:

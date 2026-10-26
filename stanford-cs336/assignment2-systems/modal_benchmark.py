@@ -33,15 +33,21 @@ image = (
 )
 
 
-def benchmark_args(num_steps: int, warmup_steps: int, mode: str) -> list[str]:
+def benchmark_args(
+    num_steps: int,
+    warmup_steps: int,
+    mode: str,
+    config_path: str = "small.toml",
+) -> list[str]:
     return [
         "python",
         "benchmark.py",
-        "--config-path=training_config.toml",
+        f"--config-path={config_path}",
         "--device=gpu",
         f"--num-steps={num_steps}",
         f"--warmup-steps={warmup_steps}",
         f"--mode={mode}",
+        "--memory-snapshot-dir=/workspace",
     ]
 
 
@@ -49,19 +55,22 @@ def benchmark_args(num_steps: int, warmup_steps: int, mode: str) -> list[str]:
     image=image,
     gpu="L40S",
     timeout=60 * 30,
+    volumes={"/workspace": volume},
 )
 def run_benchmark(
     num_steps: int = 10,
     warmup_steps: int = 5,
     mode: str = "f,b,o",
+    config_path: str = "small.toml",
 ):
     import subprocess
 
     subprocess.run(
-        benchmark_args(num_steps, warmup_steps, mode),
+        benchmark_args(num_steps, warmup_steps, mode, config_path),
         cwd="/root/cs336/cs336_systems",
         check=True,
     )
+    volume.commit()
 
 
 @app.function(
@@ -99,8 +108,9 @@ def benchmark(
     num_steps: int = 10,
     warmup_steps: int = 5,
     mode: str = "f,b,o",
+    config_path: str = "small.toml",
 ):
-    run_benchmark.remote(num_steps, warmup_steps, mode)
+    run_benchmark.remote(num_steps, warmup_steps, mode, config_path)
 
 
 @app.local_entrypoint()
