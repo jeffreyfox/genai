@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run the Modal benchmark for each model size and stage, then download the snapshot.
-# Snapshots land in this directory as <config>-<stages>.pickle, for example medium-fbo.pickle.
+# Snapshots land in this directory as <config>-<stages>-<context>.pickle, for example medium-fbo-512.pickle.
 # A failed run (for example out of memory) is reported and the loop continues.
 
 set -euo pipefail

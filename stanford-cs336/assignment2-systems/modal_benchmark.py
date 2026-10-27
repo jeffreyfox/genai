@@ -38,6 +38,8 @@ def benchmark_args(
     warmup_steps: int,
     mode: str,
     config_path: str = "small.toml",
+    compile: str = "none",
+    context_length: int = 512,
 ) -> list[str]:
     return [
         "python",
@@ -47,6 +49,8 @@ def benchmark_args(
         f"--num-steps={num_steps}",
         f"--warmup-steps={warmup_steps}",
         f"--mode={mode}",
+        f"--compile={compile}",
+        f"--context-length={context_length}",
         "--memory-snapshot-dir=/workspace",
     ]
 
@@ -62,11 +66,13 @@ def run_benchmark(
     warmup_steps: int = 5,
     mode: str = "f,b,o",
     config_path: str = "small.toml",
+    compile: str = "none",
+    context_length: int = 512,
 ):
     import subprocess
 
     subprocess.run(
-        benchmark_args(num_steps, warmup_steps, mode, config_path),
+        benchmark_args(num_steps, warmup_steps, mode, config_path, compile, context_length),
         cwd="/root/cs336/cs336_systems",
         check=True,
     )
@@ -83,6 +89,8 @@ def profile(
     num_steps: int = 10,
     warmup_steps: int = 5,
     mode: str = "f,b,o",
+    compile: str = "none",
+    context_length: int = 512,
 ):
     import subprocess
 
@@ -95,12 +103,54 @@ def profile(
             "-o",
             "/workspace/benchmark",
             "--",
-            *benchmark_args(num_steps, warmup_steps, mode),
+            *benchmark_args(
+                num_steps,
+                warmup_steps,
+                mode,
+                compile=compile,
+                context_length=context_length,
+            ),
         ],
         cwd="/root/cs336/cs336_systems",
         check=True,
     )
     volume.commit()
+
+
+@app.function(
+    image=image,
+    gpu="L40S",
+    timeout=60 * 60,
+)
+def run_attention_benchmark(
+    num_steps: int = 100,
+    warmup_steps: int = 5,
+    compile: str = "none",
+):
+    import subprocess
+
+    subprocess.run(
+        [
+            "python",
+            "benchmark_attention.py",
+            "--device=gpu",
+            f"--num-steps={num_steps}",
+            f"--warmup-steps={warmup_steps}",
+            f"--compile={compile}",
+        ],
+        cwd="/root/cs336/cs336_systems",
+        check=True,
+    )
+
+
+@app.local_entrypoint()
+def attention(
+    num_steps: int = 100,
+    warmup_steps: int = 5,
+    compile: str = "none",
+    gpu: str = "L40S",
+):
+    run_attention_benchmark.with_options(gpu=gpu).remote(num_steps, warmup_steps, compile)
 
 
 @app.local_entrypoint()
@@ -109,8 +159,13 @@ def benchmark(
     warmup_steps: int = 5,
     mode: str = "f,b,o",
     config_path: str = "small.toml",
+    compile: str = "none",
+    context_length: int = 512,
+    gpu: str = "L40S",
 ):
-    run_benchmark.remote(num_steps, warmup_steps, mode, config_path)
+    run_benchmark.with_options(gpu=gpu).remote(
+        num_steps, warmup_steps, mode, config_path, compile, context_length
+    )
 
 
 @app.local_entrypoint()
@@ -118,5 +173,10 @@ def main(
     num_steps: int = 10,
     warmup_steps: int = 5,
     mode: str = "f,b,o",
+    compile: str = "none",
+    context_length: int = 512,
+    gpu: str = "L40S",
 ):
-    profile.remote(num_steps, warmup_steps, mode)
+    profile.with_options(gpu=gpu).remote(
+        num_steps, warmup_steps, mode, compile, context_length
+    )

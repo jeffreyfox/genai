@@ -1,0 +1,40 @@
+# Show available commands.
+default:
+    @just --list
+
+# Install local dependencies using the lockfile.
+setup:
+    uv sync --locked
+
+# Authenticate your machine with Modal (one-time setup).
+auth:
+    uv run modal setup
+
+# Run a temporary HTTP endpoint until you press Ctrl-C.
+serve:
+    uv run modal serve playground.py
+
+# Deploy the HTTP endpoint to Modal.
+deploy:
+    uv run modal deploy playground.py
+
+# Follow app logs.
+logs:
+    uv run modal app logs sglang-playground
+
+# Stop the deployed app.
+stop:
+    uv run modal app stop sglang-playground
+
+# Check local syntax and Modal app configuration without allocating a GPU.
+check:
+    uv run python -m py_compile playground.py
+    uv run python -c 'import playground; print("Modal app imports successfully")'
+
+# Query the HTTP endpoint; set MODAL_KEY and MODAL_SECRET first.
+chat url:
+    curl --fail-with-body {{quote(trim_end_matches(url, '/'))}}/v1/chat/completions \
+      -H "Content-Type: application/json" \
+      -H "Modal-Key: $MODAL_KEY" \
+      -H "Modal-Secret: $MODAL_SECRET" \
+      -d '{"model":"Qwen/Qwen2.5-0.5B-Instruct","messages":[{"role":"user","content":"Say hello in one sentence."}],"max_tokens":64}'

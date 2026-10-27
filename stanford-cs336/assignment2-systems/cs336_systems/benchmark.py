@@ -3,7 +3,7 @@ import timeit
 import os
 import torch
 from pathlib import Path
-from dataclasses import asdict
+from dataclasses import asdict, replace
 import numpy as np
 from torch.nn import functional as F
 
@@ -65,19 +65,36 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
+        "--compile",
+        type=str,
+        required=False,
+        default="none",
+        choices=("none", "graph"),
+        help="none runs the model eagerly. graph wraps it with torch.compile.",
+    )
+
+    parser.add_argument(
+        "--context-length",
+        type=int,
+        required=False,
+        default=None,
+        help="Overrides the config context length for the model and the batch.",
+    )
+
+    parser.add_argument(
         "--memory-snapshot-dir",
         type=str,
         required=False,
         default=None,
-        help="Directory for the CUDA memory snapshot. A relative path is inside cs336_systems. The filename is <config>-<stages>.pickle.",
+        help="Directory for the CUDA memory snapshot. A relative path is inside cs336_systems. The filename is <config>-<stages>-<context_length>.pickle.",
     )
 
     return parser.parse_args()
 
 
-def snapshot_filename(config_path: Path, mode: str) -> str:
+def snapshot_filename(config_path: Path, mode: str, context_length: int) -> str:
     stages = mode.replace(",", "").replace(" ", "")
-    return f"{config_path.stem}-{stages}.pickle"
+    return f"{config_path.stem}-{stages}-{context_length}.pickle"
 
 def resolve_device(device_name: str) -> torch.device:
     if device_name == "cpu":
@@ -178,6 +195,9 @@ def main() -> None:
     warmup_steps = args.warmup_steps
 
     model_config, training_config = load_config(config_path)
+    if args.context_length is not None:
+        model_config = replace(model_config, context_length=args.context_length)
+        training_config = replace(training_config, context_length=args.context_length)
     num_steps = (
         args.num_steps
         if args.num_steps is not None
@@ -193,10 +213,13 @@ def main() -> None:
         f"Batch size: {training_config.batch_size}\n"
         f"Context length: {training_config.context_length}\n"
         f"Learning rate: {training_config.learning_rate}\n"
+        f"Compile: {args.compile}\n"
     )
 
     model = BasicsTransformerLM(**asdict(model_config)).to(device)
     model.train()
+    if args.compile == "graph":
+        model = torch.compile(model)
 
     optimizer = AdamW(
         model.parameters(),
@@ -233,7 +256,9 @@ def main() -> None:
             if args.memory_snapshot_dir is None
             else resolve_script_path(args.memory_snapshot_dir)
         )
-        snapshot_path = snapshot_dir / snapshot_filename(config_path, args.mode)
+        snapshot_path = snapshot_dir / snapshot_filename(
+            config_path, args.mode, training_config.context_length
+        )
         snapshot_path.parent.mkdir(parents=True, exist_ok=True)
         torch.cuda.memory._dump_snapshot(str(snapshot_path))
         torch.cuda.memory._record_memory_history(enabled=None)

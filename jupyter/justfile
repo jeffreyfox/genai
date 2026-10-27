@@ -1,0 +1,3 @@
+# Launch Jupyter Notebook via jupyter-notebook. The project script named jupyter shadows the Jupyter CLI.
+notebook:
+    uv run jupyter-notebook

@@ -2,35 +2,64 @@
 # Warm-up steps run first and are excluded from the mean and standard deviation.
 # device is cpu or gpu. gpu uses CUDA when it is available, otherwise MPS.
 # mode is a comma-separated subset of f, b, o. Example: just benchmark gpu 10 5 f
-benchmark device="gpu" num_steps="10" warmup_steps="5" mode="f,b,o":
+# compile is none or graph. graph wraps the model with torch.compile.
+benchmark device="gpu" num_steps="10" warmup_steps="5" mode="f,b,o" compile="none":
     uv run python cs336_systems/benchmark.py \
         --config-path=small.toml \
         --device={{device}} \
         --num-steps={{num_steps}} \
         --warmup-steps={{warmup_steps}} \
-        --mode={{mode}}
+        --mode={{mode}} \
+        --compile={{compile}}
 
-# Time the benchmark on a Modal L40S and print the timeit mean and standard deviation.
-# config_path is a filename in cs336_systems. The snapshot is <config>-<stages>.pickle
-# on the cs336-data volume, for example small-fbo.pickle.
-# Example: just benchmark-modal 10 5 f,b,o small.toml
-benchmark-modal num_steps="10" warmup_steps="5" mode="f,b,o" config_path="small.toml":
+# Time the benchmark on a Modal GPU and print the timeit mean and standard deviation.
+# gpu is a Modal GPU name, for example L40S, A100-80GB, H100, or H200.
+# config_path is a filename in cs336_systems. The snapshot is <config>-<stages>-<context>.pickle
+# on the cs336-data volume, for example small-fbo-512.pickle.
+# Example: just benchmark-modal 10 5 f,b,o small.toml none 512 A100-80GB
+benchmark-modal num_steps="10" warmup_steps="5" mode="f,b,o" config_path="small.toml" compile="none" context_length="512" gpu="L40S":
     uv run modal run modal_benchmark.py::benchmark \
         --num-steps={{num_steps}} \
         --warmup-steps={{warmup_steps}} \
         --mode={{mode}} \
-        --config-path={{config_path}}
+        --config-path={{config_path}} \
+        --compile={{compile}} \
+        --context-length={{context_length}} \
+        --gpu={{gpu}}
 
 # Download the snapshot for a config and mode from the cs336-data volume.
-# Example: just download-snapshot small.toml f,b,o
-download-snapshot config_path="small.toml" mode="f,b,o":
-    uv run modal volume get --force cs336-data {{file_stem(config_path)}}-{{replace(replace(mode, ",", ""), " ", "")}}.pickle .
+# Example: just download-snapshot small.toml f,b,o 512
+download-snapshot config_path="small.toml" mode="f,b,o" context_length="512":
+    uv run modal volume get --force cs336-data {{file_stem(config_path)}}-{{replace(replace(mode, ",", ""), " ", "")}}-{{context_length}}.pickle .
 
-# Profile the same benchmark on a Modal L40S with Nsight Systems.
+# Time scaled dot-product attention with no head dimension. Batch size is 8.
+# Sweeps d_model in 16, 32, 64, 128 and sequence length in 256, 1024, 4096, 8192, 16384.
+# Example: just attention-benchmark gpu 5 100
+# compile is none or graph. graph wraps attention with torch.compile.
+attention-benchmark device="gpu" warmup_steps="5" num_steps="100" compile="none":
+    uv run python cs336_systems/benchmark_attention.py \
+        --device={{device}} \
+        --warmup-steps={{warmup_steps}} \
+        --num-steps={{num_steps}} \
+        --compile={{compile}}
+
+# Same attention sweep on a Modal GPU. Results print in this terminal.
+# compile is none or graph. gpu is a Modal GPU name. Example: just attention-benchmark-modal 5 100 graph A100-80GB
+attention-benchmark-modal warmup_steps="5" num_steps="100" compile="none" gpu="L40S":
+    uv run modal run modal_benchmark.py::attention \
+        --warmup-steps={{warmup_steps}} \
+        --num-steps={{num_steps}} \
+        --compile={{compile}} \
+        --gpu={{gpu}}
+
+# Profile the same benchmark on a Modal GPU with Nsight Systems.
 # The report is written to the cs336-data volume as benchmark.nsys-rep.
-# Example: just profile-modal 10 5 f,b,o
-profile-modal num_steps="10" warmup_steps="5" mode="f,b,o":
+# Example: just profile-modal 10 5 f,b,o none 512 A100-80GB
+profile-modal num_steps="10" warmup_steps="5" mode="f,b,o" compile="none" context_length="512" gpu="L40S":
     uv run modal run modal_benchmark.py::main \
         --num-steps={{num_steps}} \
         --warmup-steps={{warmup_steps}} \
-        --mode={{mode}}
+        --mode={{mode}} \
+        --compile={{compile}} \
+        --context-length={{context_length}} \
+        --gpu={{gpu}}
