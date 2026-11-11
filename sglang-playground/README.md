@@ -1,80 +1,76 @@
-# SGLang on Modal
+# Local SGLang playground
 
-With [just](https://just.systems/) installed, run `just` to list recipes:
+The root files run SGLang on an Apple Silicon Mac using MLX. Remote GPU serving
+is self-contained in [modal/](modal/README.md).
+
+## Start locally
+
+Requires Apple Silicon, macOS 14 or newer, git, uv, and just.
 
 ```bash
+just setup  # one-time source/dependency installation
+just serve  # keep open for startup and request logs
+```
+
+In another terminal:
+
+```bash
+just health
+just chat "Explain the KV cache in simple terms."
+```
+
+The server binds to localhost:8000. Override the port consistently:
+
+```bash
+just serve 8001
+just chat "Hello" 8001
+```
+
+`playground.py` configures local serving. `chat.py` sends a request and prints
+formatted JSON with the answer and token usage. Neither requires Modal.
+`just check` checks syntax. Earlier `*-local` recipe names remain aliases.
+
+## Environment and logs
+
+`just setup` installs SGLang from its upstream default branch into `.local/sglang`
+and creates a separate Python 3.12 environment at `.venv-local`. It reuses an
+existing source checkout without automatically updating it. Keep the checkout:
+the package is installed in editable mode. Setup prints the installed revision.
+Optional Rust extensions and custom Metal kernels are not built; this text-only
+setup does not require Cargo. See the
+[Apple Metal guide](https://github.com/sgl-project/sglang/blob/main/docs/docs/hardware-platforms/apple_metal.mdx).
+
+First startup downloads Qwen2.5-0.5B-Instruct to your local Hugging Face cache.
+The server logs partial request inputs/outputs, each decode iteration, and
+request timing stats. CUDA graphs are disabled on Metal. Press Ctrl-C to stop;
+restart after editing the local launcher. There is no automatic idle shutdown.
+
+## Modal
+
+```bash
+cd modal
 just setup
-just auth  # only if needed
 just serve
 ```
 
-Other recipes: `just check`, `just deploy`, `just logs`, `just stop`, and
-`just chat https://YOUR-SERVE-URL.modal.run` (requires proxy token environment variables).
+See [modal/README.md](modal/README.md) for authentication, chat, deployment, and
+logs. Modal dependencies and lockfile live in that directory; local and remote
+SGLang versions can differ. An older root `.venv` from the original Modal setup
+is unused; the new Modal setup creates `modal/.venv`.
 
-Serve **Qwen2.5-0.5B-Instruct** with SGLang on a single GPU, preferring **L40S** with **L4** and **A10** fallbacks.
-Only the Modal SDK runs locally; CUDA, SGLang, and model weights stay on Modal.
-The ungated model needs no Hugging Face token. The container image is pinned;
-model weights follow the model repository's default revision.
+## Concurrent requests
 
-## Get started
-
-Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then:
+With `just serve` running, send N simultaneous non-streaming requests:
 
 ```bash
-uv sync
-uv run modal setup  # only if you haven't already authenticated
-uv run modal serve playground.py
+just chat-concurrent 4
+just chat-concurrent 8 "Explain prefix caching in detail." 8000 512
 ```
 
-The first request starts SGLang on a remote GPU and downloads model weights, so
-allow several minutes. Later runs reuse the image and persistent Hugging Face
-cache volume. GPU execution uses your Modal credits/billing.
-
-## Keep an HTTP endpoint available
-
-For a temporary development endpoint, leave this running in a terminal:
-
-```bash
-uv run modal serve playground.py
-```
-
-For a deployed endpoint:
-
-```bash
-uv run modal deploy playground.py
-```
-
-Copy the `serve` URL printed by Modal. The endpoint uses Modal proxy
-authentication. Create a proxy auth token in your Modal workspace and export
-its key and secret as `MODAL_KEY` and `MODAL_SECRET` (these are distinct from
-your Modal CLI credentials).
-
-```bash
-export SGLANG_URL="https://YOUR-SERVE-URL.modal.run"
-curl --fail-with-body "$SGLANG_URL/v1/chat/completions" \
-  -H "Content-Type: application/json" \
-  -H "Modal-Key: $MODAL_KEY" \
-  -H "Modal-Secret: $MODAL_SECRET" \
-  -d '{"model":"Qwen/Qwen2.5-0.5B-Instruct","messages":[{"role":"user","content":"Say hello in one sentence."}],"max_tokens":64}'
-```
-
-The endpoint scales to zero after 60 idle seconds and allows at most one GPU
-container. Requests after scale-down incur a cold start.
-Stop a deployed app with:
-
-```bash
-uv run modal app stop sglang-playground
-```
-
-## Explore
-
-- Change `MODEL` in `playground.py` to try another supported small chat model.
-- Increase `--context-length` for longer prompts, subject to GPU memory.
-- Inspect server logs in the Modal dashboard when startup fails.
-- A missing-token error means you need `uv run modal setup`.
-- Local check: `uv run python -m py_compile playground.py`.
-
-References: [Modal web servers](https://modal.com/docs/guide/webhooks),
-[Modal proxy authentication](https://modal.com/docs/guide/webhook-proxy-auth),
-[Modal SGLang example](https://modal.com/docs/examples/sglang_vlm),
-[SGLang](https://github.com/sgl-project/sglang).
+Arguments are request count, prompt, port, and maximum output tokens. Every
+request uses the same prompt. Results print as JSON in completion order with
+request numbers, elapsed seconds, responses, and any errors. The command exits
+with an error if any request fails. Timings include server queueing and response
+generation; they are not time-to-first-token measurements. Watch `#running-req`
+and `#queue-req` in the server logs to see batching. Short answers may finish
+before all requests overlap.

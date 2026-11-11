@@ -1,0 +1,21 @@
+# Show available commands.
+default:
+    @just --list
+
+# Install local dependencies using the lockfile.
+setup:
+    uv sync --locked
+
+# Authenticate your machine with Modal (one-time setup).
+auth:
+    uv run modal setup
+
+# Compile vec_add.cu with nvcc on Modal and run the binary on a GPU.
+# gpu is a Modal GPU name, for example T4, A10, L40S, or A100-40GB.
+run gpu="T4":
+    uv run modal run modal_run.py --gpu {{gpu}}
+
+# Sweep input length n; each run prints time and effective bandwidth.
+sweep-n gpu="T4":
+    uv run modal run modal_run.py --sweep-n --gpu {{gpu}}
+

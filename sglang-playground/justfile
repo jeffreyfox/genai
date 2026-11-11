@@ -1,40 +1,34 @@
-# Show available commands.
+# List local recipes. Modal recipes live in modal/justfile.
 default:
     @just --list
 
-# Install local dependencies using the lockfile.
+# Install the Apple Silicon runtime in .venv-local.
 setup:
-    uv sync --locked
+    bash scripts/setup-local.sh
 
-# Authenticate your machine with Modal (one-time setup).
-auth:
-    uv run modal setup
+# Start the local MLX server and print request logs.
+serve port="8000":
+    @test -x .venv-local/bin/python || { echo "Run just setup first."; exit 1; }
+    .venv-local/bin/python playground.py --port {{quote(port)}}
 
-# Run a temporary HTTP endpoint until you press Ctrl-C.
-serve:
-    uv run modal serve playground.py
+# Send a chat request to the local server.
+chat prompt="Explain the KV cache in simple terms." port="8000":
+    python3 chat.py --prompt {{quote(prompt)}} --port {{quote(port)}}
 
-# Deploy the HTTP endpoint to Modal.
-deploy:
-    uv run modal deploy playground.py
+# Send N simultaneous local requests; watch running-req in server logs.
+chat-concurrent n="4" prompt="Explain prefix caching in detail." port="8000" max_tokens="256":
+    python3 chat.py --concurrent {{quote(n)}} --prompt {{quote(prompt)}} --port {{quote(port)}} --max-tokens {{quote(max_tokens)}}
 
-# Follow app logs.
-logs:
-    uv run modal app logs sglang-playground
+# Check local server readiness.
+health port="8000":
+    curl --silent --show-error --fail-with-body --connect-timeout 5 --max-time 10 {{quote("http://127.0.0.1:" + port + "/health")}}
 
-# Stop the deployed app.
-stop:
-    uv run modal app stop sglang-playground
-
-# Check local syntax and Modal app configuration without allocating a GPU.
+# Check local Python syntax without loading the model.
 check:
-    uv run python -m py_compile playground.py
-    uv run python -c 'import playground; print("Modal app imports successfully")'
+    python3 -c 'from pathlib import Path; [compile(Path(p).read_text(), p, "exec") for p in ("playground.py", "chat.py")]; print("Syntax OK")'
 
-# Query the HTTP endpoint; set MODAL_KEY and MODAL_SECRET first.
-chat url:
-    curl --fail-with-body {{quote(trim_end_matches(url, '/'))}}/v1/chat/completions \
-      -H "Content-Type: application/json" \
-      -H "Modal-Key: $MODAL_KEY" \
-      -H "Modal-Secret: $MODAL_SECRET" \
-      -d '{"model":"Qwen/Qwen2.5-0.5B-Instruct","messages":[{"role":"user","content":"Say hello in one sentence."}],"max_tokens":64}'
+# Compatibility aliases for the earlier local recipes.
+alias setup-local := setup
+alias serve-local := serve
+alias chat-local := chat
+alias health-local := health
