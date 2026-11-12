@@ -1,9 +1,11 @@
-"""Compile and run vec_add.cu on a Modal GPU.
+"""Compile and run CUDA kernels on a Modal GPU.
 
 From this directory:
   uv run modal run modal_run.py
   uv run modal run modal_run.py --sweep-n
   uv run modal run modal_run.py --sweep-n --gpu L40S
+  uv run modal run modal_run.py --kernel mat_mul --gpu T4
+  uv run modal run modal_run.py --sweep-n --kernel mat_mul --gpu L40S
 """
 
 from pathlib import Path
@@ -11,10 +13,12 @@ from pathlib import Path
 import modal
 
 GPU = ["T4", "A10", "L40S", "A100-40GB"]
-SRC = Path(__file__).parent / "vec_add.cu"
+ROOT = Path(__file__).parent
 
-# Sweeps stay in a range T4 can hold (3 arrays * 4 bytes * 2^28 ≈ 3 GiB).
-SWEEP_N = [1 << 16, 1 << 18, 1 << 20, 1 << 22, 1 << 24, 1 << 26, 1 << 28]
+# Vector length. 3 arrays * 4 bytes * 2^28 ≈ 3 GiB, fits a T4.
+SWEEP_N_VEC_ADD = [1 << 16, 1 << 18, 1 << 20, 1 << 22, 1 << 24, 1 << 26, 1 << 28]
+# Matrix width. Stops at 4096 so naive O(n^3) stays practical (no --verify).
+SWEEP_N_MAT_MUL = [256, 512, 1024, 2048, 4096]
 
 image = (
     modal.Image.from_registry(
@@ -22,23 +26,30 @@ image = (
         add_python="3.12",
     )
     .entrypoint([])
-    .add_local_file(str(SRC), remote_path="/src/vec_add.cu")
+    .add_local_dir(
+        str(ROOT),
+        remote_path="/src",
+        ignore=[".venv/**", "__pycache__/**", "*.pyc", ".git/**", "*.csv"],
+    )
 )
 
-app = modal.App("vec-add", image=image)
+app = modal.App("cuda-bench", image=image)
 
 
-def compile_vec_add() -> str:
+def compile_bench() -> str:
     import subprocess
 
-    binary = "/tmp/vec_add"
+    binary = "/tmp/bench"
     subprocess.run(
         [
             "nvcc",
             "-O2",
             "-std=c++17",
             "-arch=native",
-            "/src/vec_add.cu",
+            "-I/src",
+            "/src/apps/bench.cu",
+            "/src/kernels/vec_add.cu",
+            "/src/kernels/mat_mul.cu",
             "-o",
             binary,
         ],
@@ -47,31 +58,34 @@ def compile_vec_add() -> str:
     return binary
 
 
-def run_vec_add(binary: str, args: list[str]) -> str:
+def run_bench(binary: str, args: list[str]) -> str:
     import subprocess
 
-    result = subprocess.run(
-        [binary, *args], check=True, capture_output=True, text=True
-    )
+    result = subprocess.run([binary, *args], capture_output=True, text=True)
     if result.stderr:
         print(result.stderr, end="", flush=True)
+    if result.returncode != 0:
+        if result.stdout:
+            print(result.stdout, end="", flush=True)
+        result.check_returncode()
     return result.stdout.strip()
 
 
 @app.function(gpu=GPU, timeout=30 * 60)
-def compile_and_run(sweep_n: bool = False):
-    binary = compile_vec_add()
+def compile_and_run(sweep_n: bool = False, kernel: str = "vec_add"):
+    binary = compile_bench()
     if not sweep_n:
-        rows = [run_vec_add(binary, ["--verify"])]
+        rows = [run_bench(binary, ["--kernel", kernel, "--verify"])]
     else:
-        rows = [run_vec_add(binary, [str(n)]) for n in SWEEP_N]
+        sizes = SWEEP_N_MAT_MUL if kernel == "mat_mul" else SWEEP_N_VEC_ADD
+        rows = [run_bench(binary, ["--kernel", kernel, str(n)]) for n in sizes]
 
     print("COPY INTO GOOGLE SHEETS: select the lines below, paste into A1, then Data > Split text to columns > Comma", flush=True)
-    print("gpu,n,n_threads,n_blocks,warmup,iters,time_ms,bandwidth_GBs,gflops_s", flush=True)
+    print("gpu,n,grid,block,warmup,iters,time_ms,bandwidth_GBs,gflops_s", flush=True)
     for row in rows:
         print(row.replace("\t", ","), flush=True)
 
 
 @app.local_entrypoint()
-def main(sweep_n: bool = False, gpu: str = "T4"):
-    compile_and_run.with_options(gpu=gpu).remote(sweep_n)
+def main(sweep_n: bool = False, gpu: str = "T4", kernel: str = "vec_add"):
+    compile_and_run.with_options(gpu=gpu).remote(sweep_n, kernel)

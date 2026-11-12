@@ -10,12 +10,14 @@ setup:
 auth:
     uv run modal setup
 
-# Compile vec_add.cu with nvcc on Modal and run the binary on a GPU.
+# Compile the bench with nvcc on Modal and run the chosen kernel on a GPU.
 # gpu is a Modal GPU name, for example T4, A10, L40S, or A100-40GB.
-run gpu="T4":
-    uv run modal run modal_run.py --gpu {{gpu}}
+# Positional: just run mat_mul        → T4
+#             just run mat_mul L40S   → L40S
+run kernel="vec_add" gpu="T4":
+    uv run modal run modal_run.py --gpu {{gpu}} --kernel {{kernel}}
 
 # Sweep input length n; each run prints time and effective bandwidth.
-sweep-n gpu="T4":
-    uv run modal run modal_run.py --sweep-n --gpu {{gpu}}
+sweep-n kernel="vec_add" gpu="T4":
+    uv run modal run modal_run.py --sweep-n --gpu {{gpu}} --kernel {{kernel}}
 
