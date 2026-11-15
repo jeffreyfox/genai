@@ -10,24 +10,39 @@
 #include <vector>
 
 int main(int argc, char** argv) {
-    // ./bench [--kernel vec_add|mat_mul] [n] [n_threads] [iters] [warmup] [--verify]
-    int positional[4];
+    // ./bench [--kernel vec_add|mat_mul] [n] [n_threads] [--verify]
+    int positional[2];
     int npos = 0;
     bool do_verify = false;
     bool tiled = false;
-    int tile_width = 32;
+    int block_size = -1;
+    int m = -1, k = -1;
     std::string kernel = "vec_add";
     for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--m") == 0 || std::strcmp(argv[i], "--k") == 0) {
+            const bool is_m = std::strcmp(argv[i], "--m") == 0;
+            if (i + 1 >= argc) {
+                std::cerr << "--m and --k require a positive dimension\n";
+                return 1;
+            }
+            int dimension = std::atoi(argv[++i]);
+            if (dimension <= 0) {
+                std::cerr << "--m and --k require a positive dimension\n";
+                return 1;
+            }
+            (is_m ? m : k) = dimension;
+            continue;
+        }
         if (std::strcmp(argv[i], "--tiled") == 0) {
             tiled = true;
             continue;
         }
-        if (std::strcmp(argv[i], "--tile-width") == 0) {
+        if (std::strcmp(argv[i], "--block-size") == 0) {
             if (i + 1 >= argc) {
-                std::cerr << "--tile-width requires 4, 8, 16, or 32\n";
+                std::cerr << "--block-size requires a side length\n";
                 return 1;
             }
-            tile_width = std::atoi(argv[++i]);
+            block_size = std::atoi(argv[++i]);
             continue;
         }
         if (std::strcmp(argv[i], "--verify") == 0) {
@@ -42,25 +57,31 @@ int main(int argc, char** argv) {
             kernel = argv[++i];
             continue;
         }
-        if (npos < 4) {
+        if (npos < 2) {
             positional[npos++] = std::atoi(argv[i]);
+        } else {
+            std::cerr << "expected at most n and n_threads as positional arguments\n";
+            return 1;
         }
     }
 
     const bool is_mat_mul = (kernel == "mat_mul");
-    if (tiled && (!is_mat_mul || (tile_width != 4 && tile_width != 8 && tile_width != 16 && tile_width != 32))) {
-        std::cerr << "--tiled requires --kernel mat_mul and --tile-width 4, 8, 16, or 32\n";
-        return 1;
-    }
     if (!is_mat_mul && kernel != "vec_add") {
         std::cerr << "unknown kernel: " << kernel << " (expected vec_add or mat_mul)\n";
         return 1;
     }
 
     int n = npos > 0 ? positional[0] : (is_mat_mul ? 256 : (1 << 20));
+    if (!is_mat_mul && (m != -1 || k != -1)) {
+        std::cerr << "--m and --k require --kernel mat_mul\n";
+        return 1;
+    }
+    if (m == -1) m = n;
+    if (k == -1) k = n;
     int n_threads = npos > 1 ? positional[1] : (is_mat_mul ? 32 : 256);
-    int iters = npos > 2 ? positional[2] : 50;
-    int warmup = npos > 3 ? positional[3] : 5;
+    if (block_size == -1) {
+        block_size = n_threads;
+    }
 
     if (n <= 0) {
         std::cerr << "n must be positive\n";
@@ -70,31 +91,31 @@ int main(int argc, char** argv) {
         std::cerr << "n_threads must be in [1, 1024]\n";
         return 1;
     }
-    if (is_mat_mul && n_threads * n_threads > 1024) {
-        std::cerr << "mat_mul uses n_threads x n_threads per block; n_threads must be <= 32\n";
+    if (is_mat_mul && (block_size < 1 || block_size > 32)) {
+        std::cerr << "mat_mul block_size must be in [1, 32]\n";
         return 1;
     }
-    if (iters <= 0 || warmup < 0) {
-        std::cerr << "iters must be > 0 and warmup >= 0\n";
+    if (tiled && (!is_mat_mul || (block_size != 4 && block_size != 8 && block_size != 16 && block_size != 32))) {
+        std::cerr << "--tiled requires mat_mul and --block-size 4, 8, 16, or 32\n";
         return 1;
     }
 
-    const size_t n_elems = is_mat_mul ? (size_t)n * (size_t)n : (size_t)n;
-    std::vector<float> A_h(n_elems), B_h(n_elems), C_h(n_elems);
+    const size_t a_elems = is_mat_mul ? (size_t)m * (size_t)k : (size_t)n;
+    const size_t b_elems = is_mat_mul ? (size_t)k * (size_t)n : (size_t)n;
+    const size_t c_elems = is_mat_mul ? (size_t)m * (size_t)n : (size_t)n;
+    std::vector<float> A_h(a_elems), B_h(b_elems), C_h(c_elems);
     std::mt19937 gen(42);
     std::uniform_real_distribution<float> dis(0.0f, 100.0f);
-    for (size_t i = 0; i < n_elems; ++i) {
-        A_h[i] = dis(gen);
-        B_h[i] = dis(gen);
-    }
+    for (float& value : A_h) value = dis(gen);
+    for (float& value : B_h) value = dis(gen);
 
     if (is_mat_mul) {
-        matMul(A_h.data(), B_h.data(), C_h.data(), n, n_threads, warmup, iters, tiled, tile_width);
-        if (do_verify && !verify_mat_mul(A_h.data(), B_h.data(), C_h.data(), n)) {
+        matMul(A_h.data(), B_h.data(), C_h.data(), m, n, k, block_size, tiled);
+        if (do_verify && !verify_mat_mul(A_h.data(), B_h.data(), C_h.data(), m, n, k)) {
             return 1;
         }
     } else {
-        vecAdd(A_h.data(), B_h.data(), C_h.data(), n, n_threads, warmup, iters);
+        vecAdd(A_h.data(), B_h.data(), C_h.data(), n, n_threads);
         if (do_verify && !verify_vec_add(A_h.data(), B_h.data(), C_h.data(), n)) {
             return 1;
         }

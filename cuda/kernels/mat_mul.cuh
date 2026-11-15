@@ -1,3 +1,3 @@
 #pragma once
 
-void matMul(float* A_h, float* B_h, float* C_h, int width, int n_threads, int warmup, int iters, bool tiled=false, int tile_width=32);
+void matMul(float* A_h, float* B_h, float* C_h, int m, int n, int k, int block_size, bool tiled=false);

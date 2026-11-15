@@ -15,9 +15,10 @@ run-vecadd n="1048576" gpu="T4":
     uv run modal run modal_run.py --gpu {{gpu}} --kernel vec_add --n {{n}}
 
 # Run matmul with verification: just run-matmul 4096 T4 true 16
-run-matmul n="256" gpu="T4" tiled="false" tile_width="32":
+# Append m and k for rectangular matrices: just run-matmul 1024 T4 true 32 512 2048
+run-matmul n="256" gpu="T4" tiled="false" block_size="32" m="" k="":
     @case "{{tiled}}" in true|false) ;; *) echo "tiled must be true or false" >&2; exit 1 ;; esac
-    uv run modal run modal_run.py --kernel mat_mul --n {{n}} --gpu {{gpu}} {{if tiled == "true" { "--tiled --tile-width " + tile_width } else { "" }}}
+    uv run modal run modal_run.py --kernel mat_mul --n {{n}} --gpu {{gpu}} --block-size {{block_size}} {{if tiled == "true" { "--tiled" } else { "" }}} {{if m != "" { "--m " + m } else { "" }}} {{if k != "" { "--k " + k } else { "" }}}
 
 # Sweep vector lengths without CPU verification.
 sweep-vecadd gpu="T4":
@@ -27,6 +28,6 @@ sweep-vecadd gpu="T4":
 # just sweep-matmul n 256,512,1024 T4 true 4096 16
 # just sweep-matmul tile 4,8,16,32 T4 true 4096
 # Use "" for values to select the default sweep list.
-sweep-matmul axis="n" values="" gpu="T4" tiled="false" n="4096" tile_width="32":
+sweep-matmul axis="n" values="" gpu="T4" tiled="false" n="4096" block_size="32":
     @case "{{tiled}}" in true|false) ;; *) echo "tiled must be true or false" >&2; exit 1 ;; esac
-    uv run modal run modal_run.py --kernel mat_mul --sweep {{axis}} --values '{{values}}' --gpu {{gpu}} --n {{n}} {{if tiled == "true" { "--tiled --tile-width " + tile_width } else { "" }}}
+    uv run modal run modal_run.py --kernel mat_mul --sweep {{axis}} --values '{{values}}' --gpu {{gpu}} --n {{n}} --block-size {{block_size}} {{if tiled == "true" { "--tiled" } else { "" }}}

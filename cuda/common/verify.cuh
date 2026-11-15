@@ -41,7 +41,7 @@ inline bool verify_vec_add(const float* A_h, const float* B_h, const float* C_h,
 }
 
 inline bool verify_mat_mul(
-    const float* A_h, const float* B_h, const float* C_h, int width,
+    const float* A_h, const float* B_h, const float* C_h, int m, int n, int k,
     float atol = 1e-3f, float rtol = 1e-3f) {
     int mismatches = 0;
     float max_abs_err = 0.0f;
@@ -49,13 +49,13 @@ inline bool verify_mat_mul(
     float first_got = 0.0f;
     float first_want = 0.0f;
 
-    for (int row = 0; row < width; ++row) {
-        for (int col = 0; col < width; ++col) {
+    for (int row = 0; row < m; ++row) {
+        for (int col = 0; col < n; ++col) {
             float want = 0.0f;
-            for (int k = 0; k < width; ++k) {
-                want += A_h[row * width + k] * B_h[k * width + col];
+            for (int inner = 0; inner < k; ++inner) {
+                want += A_h[(size_t)row * k + inner] * B_h[(size_t)inner * n + col];
             }
-            float got = C_h[row * width + col];
+            float got = C_h[(size_t)row * n + col];
             float err = fabsf(got - want);
             if (err > max_abs_err) {
                 max_abs_err = err;
@@ -63,7 +63,7 @@ inline bool verify_mat_mul(
             float thresh = atol + rtol * fabsf(want);
             if (err > thresh) {
                 if (mismatches == 0) {
-                    first_bad = row * width + col;
+                    first_bad = row * n + col;
                     first_got = got;
                     first_want = want;
                 }
