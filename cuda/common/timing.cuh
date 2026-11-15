@@ -48,8 +48,6 @@ void time_kernel_launches(
     std::cout << '\t';
     print_dim3(block);
     std::cout << '\t'
-              << warmup << '\t'
-              << iters << '\t'
               << std::scientific << std::setprecision(4)
               << ms << '\t'
               << bandwidth_GBs << '\t'

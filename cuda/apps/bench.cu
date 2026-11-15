@@ -14,8 +14,22 @@ int main(int argc, char** argv) {
     int positional[4];
     int npos = 0;
     bool do_verify = false;
+    bool tiled = false;
+    int tile_width = 32;
     std::string kernel = "vec_add";
     for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--tiled") == 0) {
+            tiled = true;
+            continue;
+        }
+        if (std::strcmp(argv[i], "--tile-width") == 0) {
+            if (i + 1 >= argc) {
+                std::cerr << "--tile-width requires 4, 8, 16, or 32\n";
+                return 1;
+            }
+            tile_width = std::atoi(argv[++i]);
+            continue;
+        }
         if (std::strcmp(argv[i], "--verify") == 0) {
             do_verify = true;
             continue;
@@ -34,6 +48,10 @@ int main(int argc, char** argv) {
     }
 
     const bool is_mat_mul = (kernel == "mat_mul");
+    if (tiled && (!is_mat_mul || (tile_width != 4 && tile_width != 8 && tile_width != 16 && tile_width != 32))) {
+        std::cerr << "--tiled requires --kernel mat_mul and --tile-width 4, 8, 16, or 32\n";
+        return 1;
+    }
     if (!is_mat_mul && kernel != "vec_add") {
         std::cerr << "unknown kernel: " << kernel << " (expected vec_add or mat_mul)\n";
         return 1;
@@ -71,7 +89,7 @@ int main(int argc, char** argv) {
     }
 
     if (is_mat_mul) {
-        matMul(A_h.data(), B_h.data(), C_h.data(), n, n_threads, warmup, iters);
+        matMul(A_h.data(), B_h.data(), C_h.data(), n, n_threads, warmup, iters, tiled, tile_width);
         if (do_verify && !verify_mat_mul(A_h.data(), B_h.data(), C_h.data(), n)) {
             return 1;
         }

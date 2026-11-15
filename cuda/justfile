@@ -21,3 +21,15 @@ run kernel="vec_add" gpu="T4":
 sweep-n kernel="vec_add" gpu="T4":
     uv run modal run modal_run.py --sweep-n --gpu {{gpu}} --kernel {{kernel}}
 
+# Run tiled matmul with verification: just run-tiled L40S 16
+run-tiled gpu="T4" tile_width="32":
+    uv run modal run modal_run.py --kernel mat_mul --gpu {{gpu}} --tiled --tile-width {{tile_width}}
+
+# Sweep matrix widths with tiled matmul, without CPU verification.
+sweep-n-tiled gpu="T4" tile_width="32":
+    uv run modal run modal_run.py --sweep-n --kernel mat_mul --gpu {{gpu}} --tiled --tile-width {{tile_width}}
+
+
+# Sweep 4x4, 8x8, 16x16, 32x32 tiles at a fixed matrix width; no CPU verification.
+sweep-tile n="4096" gpu="T4":
+    uv run modal run modal_run.py --kernel mat_mul --sweep-tile --n {{n}} --gpu {{gpu}}

@@ -3,6 +3,7 @@
 From this directory:
   uv run modal run modal_run.py
   uv run modal run modal_run.py --sweep-n
+  uv run modal run modal_run.py --kernel mat_mul --sweep-tile --n 4096
   uv run modal run modal_run.py --sweep-n --gpu L40S
   uv run modal run modal_run.py --kernel mat_mul --gpu T4
   uv run modal run modal_run.py --sweep-n --kernel mat_mul --gpu L40S
@@ -72,20 +73,38 @@ def run_bench(binary: str, args: list[str]) -> str:
 
 
 @app.function(gpu=GPU, timeout=30 * 60)
-def compile_and_run(sweep_n: bool = False, kernel: str = "vec_add"):
+def compile_and_run(sweep_n: bool = False, kernel: str = "vec_add", tiled: bool = False, tile_width: int = 32, sweep_tile: bool = False, n: int = 256):
+    if tiled and (kernel != "mat_mul" or tile_width not in (4, 8, 16, 32)):
+        raise ValueError("Tiled mode requires mat_mul and tile_width 4, 8, 16, or 32")
+    if sweep_tile and (sweep_n or kernel != "mat_mul" or n <= 0):
+        raise ValueError("Tile sweep requires mat_mul, positive n, and no --sweep-n")
     binary = compile_bench()
-    if not sweep_n:
-        rows = [run_bench(binary, ["--kernel", kernel, "--verify"])]
+    args = ["--kernel", kernel]
+    if tiled:
+        args += ["--tiled", "--tile-width", str(tile_width)]
+    if sweep_tile:
+        rows = [run_bench(binary, ["--kernel", "mat_mul", str(n), "--tiled", "--tile-width", str(tile)])
+                for tile in (4, 8, 16, 32)]
+    elif not sweep_n:
+        rows = [run_bench(binary, [*args, "--verify"])]
     else:
         sizes = SWEEP_N_MAT_MUL if kernel == "mat_mul" else SWEEP_N_VEC_ADD
-        rows = [run_bench(binary, ["--kernel", kernel, str(n)]) for n in sizes]
+        rows = [run_bench(binary, [*args, str(n)]) for n in sizes]
 
     print("COPY INTO GOOGLE SHEETS: select the lines below, paste into A1, then Data > Split text to columns > Comma", flush=True)
-    print("gpu,n,grid,block,warmup,iters,time_ms,bandwidth_GBs,gflops_s", flush=True)
+    print("gpu,n,grid,block,tiled,tile_width,avg_time_ms,bandwidth_GBs,gflops_s", flush=True)
     for row in rows:
-        print(row.replace("\t", ","), flush=True)
+        is_tiled = tiled or sweep_tile
+        fields = row.split("\t")
+        row_tile_width = fields[3].split("x")[0] if is_tiled else ""
+        fields[4:4] = [str(is_tiled), row_tile_width]
+        print(",".join(fields), flush=True)
 
 
 @app.local_entrypoint()
-def main(sweep_n: bool = False, gpu: str = "T4", kernel: str = "vec_add"):
-    compile_and_run.with_options(gpu=gpu).remote(sweep_n, kernel)
+def main(sweep_n: bool = False, gpu: str = "T4", kernel: str = "vec_add", tiled: bool = False, tile_width: int = 32, sweep_tile: bool = False, n: int = 256):
+    if tiled and (kernel != "mat_mul" or tile_width not in (4, 8, 16, 32)):
+        raise ValueError("--tiled requires --kernel mat_mul and --tile-width 4, 8, 16, or 32")
+    if sweep_tile and (sweep_n or kernel != "mat_mul" or n <= 0):
+        raise ValueError("--sweep-tile requires --kernel mat_mul, positive --n, and no --sweep-n")
+    compile_and_run.with_options(gpu=gpu).remote(sweep_n, kernel, tiled, tile_width, sweep_tile, n)
