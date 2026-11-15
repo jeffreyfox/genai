@@ -1,12 +1,9 @@
 """Compile and run CUDA kernels on a Modal GPU.
 
 From this directory:
-  uv run modal run modal_run.py
-  uv run modal run modal_run.py --sweep-n
-  uv run modal run modal_run.py --kernel mat_mul --sweep-tile --n 4096
-  uv run modal run modal_run.py --sweep-n --gpu L40S
-  uv run modal run modal_run.py --kernel mat_mul --gpu T4
-  uv run modal run modal_run.py --sweep-n --kernel mat_mul --gpu L40S
+  just run-matmul 4096 T4 true 16
+  just sweep-matmul n 256,512,1024 T4 false
+  just sweep-matmul tile 4,8,16,32 T4 true 4096
 """
 
 from pathlib import Path
@@ -72,39 +69,79 @@ def run_bench(binary: str, args: list[str]) -> str:
     return result.stdout.strip()
 
 
+def validate_options(kernel: str, sweep: str, tiled: bool, tile_width: int, n: int):
+    if kernel not in ("vec_add", "mat_mul"):
+        raise ValueError("--kernel must be vec_add or mat_mul")
+    if sweep not in ("", "n", "tile"):
+        raise ValueError("--sweep must be n or tile")
+    if sweep != "n" and n <= 0:
+        raise ValueError("--n must be positive")
+    if tiled and kernel != "mat_mul":
+        raise ValueError("--tiled requires --kernel mat_mul")
+    if sweep == "tile":
+        if kernel != "mat_mul" or not tiled:
+            raise ValueError("--sweep tile requires --kernel mat_mul --tiled")
+    elif tiled and tile_width not in (4, 8, 16, 32):
+        raise ValueError("--tile-width must be 4, 8, 16, or 32")
+
+
+def parse_sweep_values(sweep: str, values: str) -> list[int]:
+    if not values:
+        return []
+    if not sweep:
+        raise ValueError("--values requires --sweep")
+    if "=" in values:
+        axis, values = values.split("=", 1)
+        if axis != sweep:
+            raise ValueError("Values prefix must match --sweep")
+    try:
+        parsed = [int(value.strip()) for value in values.split(",")]
+    except ValueError:
+        raise ValueError("--values must contain comma-separated integers") from None
+    if any(value <= 0 for value in parsed):
+        raise ValueError("Sweep values must be positive")
+    if sweep == "tile" and any(value not in (4, 8, 16, 32) for value in parsed):
+        raise ValueError("Tile sweep values must be 4, 8, 16, or 32")
+    return parsed
+
+
 @app.function(gpu=GPU, timeout=30 * 60)
-def compile_and_run(sweep_n: bool = False, kernel: str = "vec_add", tiled: bool = False, tile_width: int = 32, sweep_tile: bool = False, n: int = 256):
-    if tiled and (kernel != "mat_mul" or tile_width not in (4, 8, 16, 32)):
-        raise ValueError("Tiled mode requires mat_mul and tile_width 4, 8, 16, or 32")
-    if sweep_tile and (sweep_n or kernel != "mat_mul" or n <= 0):
-        raise ValueError("Tile sweep requires mat_mul, positive n, and no --sweep-n")
+def compile_and_run(sweep: str = "", kernel: str = "vec_add", tiled: bool = False, tile_width: int = 32, n: int = -1, values: str = ""):
+    if n == -1:
+        n = 256 if kernel == "mat_mul" else 1 << 20
+    validate_options(kernel, sweep, tiled, tile_width, n)
+    sweep_values = parse_sweep_values(sweep, values)
     binary = compile_bench()
-    args = ["--kernel", kernel]
-    if tiled:
-        args += ["--tiled", "--tile-width", str(tile_width)]
-    if sweep_tile:
-        rows = [run_bench(binary, ["--kernel", "mat_mul", str(n), "--tiled", "--tile-width", str(tile)])
-                for tile in (4, 8, 16, 32)]
-    elif not sweep_n:
-        rows = [run_bench(binary, [*args, "--verify"])]
+    if sweep == "tile":
+        configs = [(n, tile) for tile in (sweep_values or (4, 8, 16, 32))]
+    elif sweep == "n":
+        sizes = sweep_values or (SWEEP_N_MAT_MUL if kernel == "mat_mul" else SWEEP_N_VEC_ADD)
+        configs = [(size, tile_width) for size in sizes]
     else:
-        sizes = SWEEP_N_MAT_MUL if kernel == "mat_mul" else SWEEP_N_VEC_ADD
-        rows = [run_bench(binary, [*args, str(n)]) for n in sizes]
+        configs = [(n, tile_width)]
+
+    rows = []
+    for size, tile in configs:
+        args = ["--kernel", kernel, str(size)]
+        if tiled:
+            args += ["--tiled", "--tile-width", str(tile)]
+        if not sweep:
+            args += ["--verify"]
+        rows.append(run_bench(binary, args))
 
     print("COPY INTO GOOGLE SHEETS: select the lines below, paste into A1, then Data > Split text to columns > Comma", flush=True)
     print("gpu,n,grid,block,tiled,tile_width,avg_time_ms,bandwidth_GBs,gflops_s", flush=True)
     for row in rows:
-        is_tiled = tiled or sweep_tile
         fields = row.split("\t")
-        row_tile_width = fields[3].split("x")[0] if is_tiled else ""
-        fields[4:4] = [str(is_tiled), row_tile_width]
+        row_tile_width = fields[3].split("x")[0] if tiled else ""
+        fields[4:4] = [str(tiled), row_tile_width]
         print(",".join(fields), flush=True)
 
 
 @app.local_entrypoint()
-def main(sweep_n: bool = False, gpu: str = "T4", kernel: str = "vec_add", tiled: bool = False, tile_width: int = 32, sweep_tile: bool = False, n: int = 256):
-    if tiled and (kernel != "mat_mul" or tile_width not in (4, 8, 16, 32)):
-        raise ValueError("--tiled requires --kernel mat_mul and --tile-width 4, 8, 16, or 32")
-    if sweep_tile and (sweep_n or kernel != "mat_mul" or n <= 0):
-        raise ValueError("--sweep-tile requires --kernel mat_mul, positive --n, and no --sweep-n")
-    compile_and_run.with_options(gpu=gpu).remote(sweep_n, kernel, tiled, tile_width, sweep_tile, n)
+def main(sweep: str = "", gpu: str = "T4", kernel: str = "vec_add", tiled: bool = False, tile_width: int = 32, n: int = -1, values: str = ""):
+    if n == -1:
+        n = 256 if kernel == "mat_mul" else 1 << 20
+    validate_options(kernel, sweep, tiled, tile_width, n)
+    parse_sweep_values(sweep, values)
+    compile_and_run.with_options(gpu=gpu).remote(sweep, kernel, tiled, tile_width, n, values)

@@ -41,7 +41,7 @@ inline bool verify_vec_add(const float* A_h, const float* B_h, const float* C_h,
 }
 
 inline bool verify_mat_mul(
-    const float* M_h, const float* N_h, const float* P_h, int width,
+    const float* A_h, const float* B_h, const float* C_h, int width,
     float atol = 1e-3f, float rtol = 1e-3f) {
     int mismatches = 0;
     float max_abs_err = 0.0f;
@@ -53,9 +53,9 @@ inline bool verify_mat_mul(
         for (int col = 0; col < width; ++col) {
             float want = 0.0f;
             for (int k = 0; k < width; ++k) {
-                want += M_h[row * width + k] * N_h[k * width + col];
+                want += A_h[row * width + k] * B_h[k * width + col];
             }
-            float got = P_h[row * width + col];
+            float got = C_h[row * width + col];
             float err = fabsf(got - want);
             if (err > max_abs_err) {
                 max_abs_err = err;
