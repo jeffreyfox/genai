@@ -31,3 +31,7 @@ sweep-vecadd gpu="T4":
 sweep-matmul axis="n" values="" gpu="T4" tiled="false" n="4096" block_size="32":
     @case "{{tiled}}" in true|false) ;; *) echo "tiled must be true or false" >&2; exit 1 ;; esac
     uv run modal run modal_run.py --kernel mat_mul --sweep {{axis}} --values '{{values}}' --gpu {{gpu}} --n {{n}} --block-size {{block_size}} {{if tiled == "true" { "--tiled" } else { "" }}}
+
+# Run single-block sum reduction with verification: just run-sum 1000 T4
+run-sumred n="1000" gpu="T4":
+    uv run modal run modal_run.py --gpu {{gpu}} --kernel sum_red --n {{n}}

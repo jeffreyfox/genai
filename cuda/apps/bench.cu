@@ -1,6 +1,7 @@
 #include "common/verify.cuh"
 #include "kernels/mat_mul.cuh"
 #include "kernels/vec_add.cuh"
+#include "kernels/sum_red.cuh"
 
 #include <cstdlib>
 #include <cstring>
@@ -66,8 +67,8 @@ int main(int argc, char** argv) {
     }
 
     const bool is_mat_mul = (kernel == "mat_mul");
-    if (!is_mat_mul && kernel != "vec_add") {
-        std::cerr << "unknown kernel: " << kernel << " (expected vec_add or mat_mul)\n";
+    if (!is_mat_mul && kernel != "vec_add" && kernel != "sum_red") {
+        std::cerr << "unknown kernel: " << kernel << " (expected vec_add, mat_mul, or sum_red)\n";
         return 1;
     }
 
@@ -112,6 +113,12 @@ int main(int argc, char** argv) {
     if (is_mat_mul) {
         matMul(A_h.data(), B_h.data(), C_h.data(), m, n, k, block_size, tiled);
         if (do_verify && !verify_mat_mul(A_h.data(), B_h.data(), C_h.data(), m, n, k)) {
+            return 1;
+        }
+    } else if (kernel == "sum_red") {
+        std::vector<float> original = A_h;
+        sumRed(A_h.data(), n);
+        if (do_verify && !verify_sum(original.data(), A_h[0], n)) {
             return 1;
         }
     } else {

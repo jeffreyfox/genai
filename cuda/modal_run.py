@@ -48,6 +48,7 @@ def compile_bench() -> str:
             "/src/apps/bench.cu",
             "/src/kernels/vec_add.cu",
             "/src/kernels/mat_mul.cu",
+            "/src/kernels/sum_red.cu",
             "-o",
             binary,
         ],
@@ -70,8 +71,10 @@ def run_bench(binary: str, args: list[str]) -> str:
 
 
 def validate_options(kernel: str, sweep: str, tiled: bool, block_size: int, n: int):
-    if kernel not in ("vec_add", "mat_mul"):
-        raise ValueError("--kernel must be vec_add or mat_mul")
+    if kernel not in ("vec_add", "mat_mul", "sum_red"):
+        raise ValueError("--kernel must be vec_add, mat_mul, or sum_red")
+    if kernel == "sum_red" and sweep:
+        raise ValueError("sum_red does not support sweeps")
     if sweep not in ("", "n", "tile"):
         raise ValueError("--sweep must be n or tile")
     if sweep != "n" and n <= 0:

@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <iostream>
+#include <iomanip>
 
 inline bool verify_vec_add(const float* A_h, const float* B_h, const float* C_h, int n, float tol = 1e-6f) {
     int mismatches = 0;
@@ -85,4 +86,21 @@ inline bool verify_mat_mul(
               << " want=" << first_want
               << " atol=" << atol << " rtol=" << rtol << std::endl;
     return false;
+}
+
+inline bool verify_sum(const float* input, float got, int n, double atol = 1e-5, double rtol = 1e-5) {
+    double want = 0.0;
+    double magnitude = 0.0;
+    for (int i = 0; i < n; ++i) {
+        want += input[i];
+        magnitude += std::fabs(double(input[i]));
+    }
+    double err = std::fabs(double(got) - want);
+    bool ok = std::isfinite(got) && err <= atol + rtol * magnitude;
+    std::cerr << "verify=" << (ok ? "pass" : "fail")
+              << std::scientific << std::setprecision(3)
+              << " got=" << got << " want=" << want
+              << " abs_err=" << err << " atol=" << atol << " rtol=" << rtol
+              << std::defaultfloat << std::setprecision(6) << std::endl;
+    return ok;
 }
